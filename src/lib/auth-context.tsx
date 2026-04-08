@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
@@ -29,63 +29,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialized = useRef(false);
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     const supabase = createClient();
 
-    const initAuth = async () => {
+    async function fetchProfile(userId: string) {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error("getSession error:", sessionError);
-          setLoading(false);
-          return;
-        }
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        if (currentUser) {
-          try {
-            const { data } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("user_id", currentUser.id)
-              .single();
-            setProfile(data as unknown as Profile | null);
-          } catch {
-            // profile not found, continue without it
-          }
-        }
-      } catch (err) {
-        console.error("initAuth error:", err);
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", userId)
+          .single();
+        setProfile(data as unknown as Profile | null);
+      } catch {
+        setProfile(null);
       }
-      setLoading(false);
-    };
-
-    initAuth();
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event: string, session: { user: User } | null) => {
+      async (event: string, session: { user: User } | null) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
+
         if (currentUser) {
-          try {
-            const { data } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("user_id", currentUser.id)
-              .single();
-            setProfile(data as unknown as Profile | null);
-          } catch {
-            // profile not found
-          }
+          await fetchProfile(currentUser.id);
         } else {
           setProfile(null);
         }
+
         setLoading(false);
+
+        if (event === "SIGNED_OUT") {
+          setProfile(null);
+        }
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Fallback timeout - if onAuthStateChange doesn't fire in 5s, stop loading
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
