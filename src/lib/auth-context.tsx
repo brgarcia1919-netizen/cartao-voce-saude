@@ -54,13 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
+      async (_event: unknown, session: unknown) => {
+        const s = session as { user: import("@supabase/supabase-js").User } | null;
+        setUser(s?.user ?? null);
+        if (s?.user) {
           const { data } = await supabase
             .from("profiles")
             .select("*")
-            .eq("user_id", session.user.id)
+            .eq("user_id", s.user.id)
             .single();
           setProfile(data as unknown as Profile | null);
         } else {

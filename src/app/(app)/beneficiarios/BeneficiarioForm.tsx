@@ -53,7 +53,7 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
         .select("*")
         .eq("id", id)
         .single()
-        .then(({ data: rawData }) => {
+        .then(({ data: rawData }: { data: unknown }) => {
           const data = rawData as unknown as Beneficiario | null;
           if (data) {
             setForm({
