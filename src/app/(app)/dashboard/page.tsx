@@ -54,9 +54,9 @@ export default function DashboardPage() {
     const [
       { count: totalAtivos },
       { count: renovacoesPendentes },
-      { data: pagamentosMes },
+      { data: rawPagamentosMes },
       { count: inadimplentes },
-      { data: ultimosBeneficiarios },
+      { data: rawUltimosBeneficiarios },
     ] = await Promise.all([
       supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
       supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
@@ -65,7 +65,10 @@ export default function DashboardPage() {
       supabase.from("beneficiarios").select("*, planos(*)").order("created_at", { ascending: false }).limit(5),
     ]);
 
-    const receitaMes = (pagamentosMes || []).reduce((sum, p) => sum + p.valor, 0);
+    const pagamentosMes = (rawPagamentosMes || []) as unknown as { valor: number }[];
+    const ultimosBeneficiarios = (rawUltimosBeneficiarios || []) as unknown as Beneficiario[];
+
+    const receitaMes = pagamentosMes.reduce((sum: number, p: { valor: number }) => sum + p.valor, 0);
 
     // Evolução últimos 6 meses
     const evolucao: { mes: string; total: number }[] = [];
@@ -85,15 +88,16 @@ export default function DashboardPage() {
         .lte("data_inicio", endOfMonth)
         .gte("data_vencimento", startOfMonth);
 
-      const { data: pagMes } = await supabase
+      const { data: rawPagMes } = await supabase
         .from("pagamentos")
         .select("valor")
         .gte("mes_referencia", pStart)
         .lt("mes_referencia", pEnd)
         .eq("status", "pago");
 
+      const pagMes = (rawPagMes || []) as unknown as { valor: number }[];
       evolucao.push({ mes: mesLabel, total: count || 0 });
-      receitas.push({ mes: mesLabel, valor: (pagMes || []).reduce((s, p) => s + p.valor, 0) });
+      receitas.push({ mes: mesLabel, valor: pagMes.reduce((s: number, p: { valor: number }) => s + p.valor, 0) });
     }
 
     setData({
@@ -103,7 +107,7 @@ export default function DashboardPage() {
       inadimplentes: inadimplentes || 0,
       evolucao,
       receitas,
-      ultimosBeneficiarios: ultimosBeneficiarios || [],
+      ultimosBeneficiarios,
     });
     setLoading(false);
   }

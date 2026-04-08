@@ -39,8 +39,8 @@ export default function FinanceiroPage() {
         .order("data_pagamento", { ascending: false }),
       supabase.from("beneficiarios").select("*, planos(*)").eq("status", "ativo"),
     ]);
-    setPagamentos(pag || []);
-    setBeneficiarios(ben || []);
+    setPagamentos((pag || []) as unknown as Pagamento[]);
+    setBeneficiarios((ben || []) as unknown as Beneficiario[]);
     setLoading(false);
   }, [filterMes]);
 
@@ -65,11 +65,11 @@ export default function FinanceiroPage() {
 
     const { error } = await supabase.from("pagamentos").insert({
       beneficiario_id: formBeneficiario,
-      mes_referencia: filterMes,
+      mes_referencia: `${filterMes}-01`,
       valor: parseFloat(formValor),
       status: formStatus,
       data_pagamento: formStatus === "pago" ? formData : null,
-    });
+    } as never);
 
     if (error) {
       toast(error.message, "error");
@@ -85,13 +85,13 @@ export default function FinanceiroPage() {
     loadData();
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    const update: Record<string, unknown> = { status };
-    if (status === "pago") {
+  const updateStatus = async (id: string, newStatus: "pago" | "pendente" | "em_atraso") => {
+    const update: { status: "pago" | "pendente" | "em_atraso"; data_pagamento?: string | null } = { status: newStatus };
+    if (newStatus === "pago") {
       update.data_pagamento = new Date().toISOString().slice(0, 10);
     }
 
-    const { error } = await supabase.from("pagamentos").update(update).eq("id", id);
+    const { error } = await supabase.from("pagamentos").update(update as never).eq("id", id);
     if (error) {
       toast(error.message, "error");
       return;

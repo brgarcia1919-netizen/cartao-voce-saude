@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { ArrowLeft, Save } from "lucide-react";
-import type { Plano, StatusBeneficiario } from "@/lib/types";
+import type { Beneficiario, Plano, StatusBeneficiario } from "@/lib/types";
 
 interface Props {
   id: string | null;
@@ -53,19 +53,20 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
         .select("*")
         .eq("id", id)
         .single()
-        .then(({ data }: { data: Record<string, string> | null }) => {
+        .then(({ data: rawData }) => {
+          const data = rawData as unknown as Beneficiario | null;
           if (data) {
             setForm({
-              nome: data.nome ?? "",
-              cpf: data.cpf ?? "",
-              telefone: data.telefone ?? "",
-              email: data.email ?? "",
-              endereco: data.endereco ?? "",
-              data_nascimento: data.data_nascimento ?? "",
-              status: (data.status as StatusBeneficiario) ?? "ativo",
-              data_inicio: data.data_inicio ?? "",
-              data_vencimento: data.data_vencimento ?? "",
-              plano_id: data.plano_id ?? "",
+              nome: data.nome,
+              cpf: data.cpf,
+              telefone: data.telefone,
+              email: data.email,
+              endereco: data.endereco,
+              data_nascimento: data.data_nascimento,
+              status: data.status,
+              data_inicio: data.data_inicio,
+              data_vencimento: data.data_vencimento,
+              plano_id: data.plano_id,
             });
           }
           setLoadingData(false);
@@ -90,7 +91,7 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
     if (id) {
       const { error: err } = await supabase
         .from("beneficiarios")
-        .update(payload)
+        .update(payload as never)
         .eq("id", id);
       if (err) {
         setError(err.message);
@@ -100,7 +101,7 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
     } else {
       const { error: err } = await supabase
         .from("beneficiarios")
-        .insert(payload);
+        .insert(payload as never);
       if (err) {
         setError(err.message);
         setLoading(false);

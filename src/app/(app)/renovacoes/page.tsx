@@ -46,7 +46,7 @@ export default function RenovacoesPage() {
       .lt("mes_referencia", endDate)
       .order("mes_referencia", { ascending: true });
 
-    setRenovacoes(data || []);
+    setRenovacoes((data || []) as unknown as Renovacao[]);
     setLoading(false);
   }, [filterMes]);
 
@@ -60,7 +60,7 @@ export default function RenovacoesPage() {
       .update({
         status: "renovado",
         data_renovacao: new Date().toISOString().slice(0, 10),
-      })
+      } as never)
       .eq("id", id);
 
     if (error) {
@@ -74,7 +74,7 @@ export default function RenovacoesPage() {
   const marcarCancelado = async (id: string) => {
     const { error } = await supabase
       .from("renovacoes")
-      .update({ status: "cancelado" })
+      .update({ status: "cancelado" } as never)
       .eq("id", id);
 
     if (error) {

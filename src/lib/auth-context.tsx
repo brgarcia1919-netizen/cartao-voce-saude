@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .select("*")
             .eq("user_id", currentUser.id)
             .single();
-          setProfile(data);
+          setProfile(data as unknown as Profile | null);
         }
       } catch {
         // ignore
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .select("*")
             .eq("user_id", session.user.id)
             .single();
-          setProfile(data);
+          setProfile(data as unknown as Profile | null);
         } else {
           setProfile(null);
         }

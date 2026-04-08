@@ -24,8 +24,8 @@ export default function BeneficiarioDetail({ id, onClose }: Props) {
       supabase.from("beneficiarios").select("*, planos(*)").eq("id", id).single(),
       supabase.from("pagamentos").select("*").eq("beneficiario_id", id).order("mes_referencia", { ascending: false }),
     ]).then(([{ data: b }, { data: p }]) => {
-      setBeneficiario(b);
-      setPagamentos(p || []);
+      setBeneficiario(b as unknown as Beneficiario | null);
+      setPagamentos((p || []) as unknown as Pagamento[]);
       setLoading(false);
     });
   }, [id]);

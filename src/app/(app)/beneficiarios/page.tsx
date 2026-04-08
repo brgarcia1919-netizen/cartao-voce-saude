@@ -42,10 +42,10 @@ export default function BeneficiariosPage() {
     }
 
     const { data } = await query;
-    setBeneficiarios(data || []);
+    setBeneficiarios((data || []) as unknown as Beneficiario[]);
 
     const { data: planosData } = await supabase.from("planos").select("*");
-    setPlanos(planosData || []);
+    setPlanos((planosData || []) as unknown as Plano[]);
     setLoading(false);
   }, [filterStatus, filterMes]);
 
