@@ -53,19 +53,19 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
         .select("*")
         .eq("id", id)
         .single()
-        .then(({ data }) => {
+        .then(({ data }: { data: Record<string, string> | null }) => {
           if (data) {
             setForm({
-              nome: data.nome,
-              cpf: data.cpf,
-              telefone: data.telefone,
-              email: data.email,
-              endereco: data.endereco,
-              data_nascimento: data.data_nascimento,
-              status: data.status,
-              data_inicio: data.data_inicio,
-              data_vencimento: data.data_vencimento,
-              plano_id: data.plano_id,
+              nome: data.nome ?? "",
+              cpf: data.cpf ?? "",
+              telefone: data.telefone ?? "",
+              email: data.email ?? "",
+              endereco: data.endereco ?? "",
+              data_nascimento: data.data_nascimento ?? "",
+              status: (data.status as StatusBeneficiario) ?? "ativo",
+              data_inicio: data.data_inicio ?? "",
+              data_vencimento: data.data_vencimento ?? "",
+              plano_id: data.plano_id ?? "",
             });
           }
           setLoadingData(false);
