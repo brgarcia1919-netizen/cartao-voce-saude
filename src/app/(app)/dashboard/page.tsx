@@ -32,83 +32,100 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
-  function mesRange(mesKey: string) {
-    const [y, m] = mesKey.split("-").map(Number);
-    const start = `${mesKey}-01`;
-    const nextMonth = new Date(y, m, 1);
-    const end = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
-    return { start, end };
-  }
-
   async function loadDashboard() {
-    const now = new Date();
-    const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const { start: mesStart, end: mesEnd } = mesRange(mesAtual);
+    try {
+      const supabase = createClient();
+      const now = new Date();
+      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-    const [
-      { count: totalAtivos },
-      { count: renovacoesPendentes },
-      { data: rawPagamentosMes },
-      { count: inadimplentes },
-      { data: rawUltimosBeneficiarios },
-    ] = await Promise.all([
-      supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
-      supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
-      supabase.from("pagamentos").select("valor").gte("mes_referencia", mesStart).lt("mes_referencia", mesEnd).eq("status", "pago"),
-      supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "em_atraso"),
-      supabase.from("beneficiarios").select("*, planos(*)").order("created_at", { ascending: false }).limit(5),
-    ]);
+      // Queries principais em paralelo
+      const [
+        { count: totalAtivos },
+        { count: renovacoesPendentes },
+        { data: rawPagamentosMes },
+        { count: inadimplentes },
+        { data: rawUltimosBeneficiarios },
+      ] = await Promise.all([
+        supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
+        supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
+        supabase.from("pagamentos").select("valor").eq("mes_referencia", mesAtual).eq("status", "pago"),
+        supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "em_atraso"),
+        supabase.from("beneficiarios").select("*, planos(*)").order("created_at", { ascending: false }).limit(5),
+      ]);
 
-    const pagamentosMes = (rawPagamentosMes || []) as unknown as { valor: number }[];
-    const ultimosBeneficiarios = (rawUltimosBeneficiarios || []) as unknown as Beneficiario[];
+      const pagamentosMes = (rawPagamentosMes || []) as unknown as { valor: number }[];
+      const ultimosBeneficiarios = (rawUltimosBeneficiarios || []) as unknown as Beneficiario[];
+      const receitaMes = pagamentosMes.reduce((sum: number, p: { valor: number }) => sum + p.valor, 0);
 
-    const receitaMes = pagamentosMes.reduce((sum: number, p: { valor: number }) => sum + p.valor, 0);
+      // Gerar chaves dos últimos 6 meses
+      const meses: { key: string; label: string; startDate: string; endDate: string }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        meses.push({
+          key,
+          label,
+          startDate: `${key}-01`,
+          endDate: `${key}-${String(lastDay).padStart(2, "0")}`,
+        });
+      }
 
-    // Evolução últimos 6 meses
-    const evolucao: { mes: string; total: number }[] = [];
-    const receitas: { mes: string; valor: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const mesKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const mesLabel = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      const endOfMonth = `${mesKey}-${String(lastDay).padStart(2, "0")}`;
-      const startOfMonth = `${mesKey}-01`;
-      const { start: pStart, end: pEnd } = mesRange(mesKey);
+      // Queries dos 6 meses em paralelo (não sequencial)
+      const [evolucaoResults, receitasResults] = await Promise.all([
+        Promise.all(
+          meses.map((m) =>
+            supabase
+              .from("beneficiarios")
+              .select("*", { count: "exact", head: true })
+              .lte("data_inicio", m.endDate)
+              .gte("data_vencimento", m.startDate)
+          )
+        ),
+        Promise.all(
+          meses.map((m) =>
+            supabase
+              .from("pagamentos")
+              .select("valor")
+              .eq("mes_referencia", m.key)
+              .eq("status", "pago")
+          )
+        ),
+      ]);
 
-      const { count } = await supabase
-        .from("beneficiarios")
-        .select("*", { count: "exact", head: true })
-        .lte("data_inicio", endOfMonth)
-        .gte("data_vencimento", startOfMonth);
+      const evolucao = meses.map((m, i) => ({
+        mes: m.label,
+        total: evolucaoResults[i].count || 0,
+      }));
 
-      const { data: rawPagMes } = await supabase
-        .from("pagamentos")
-        .select("valor")
-        .gte("mes_referencia", pStart)
-        .lt("mes_referencia", pEnd)
-        .eq("status", "pago");
+      const receitas = meses.map((m, i) => {
+        const pags = (receitasResults[i].data || []) as unknown as { valor: number }[];
+        return {
+          mes: m.label,
+          valor: pags.reduce((s: number, p: { valor: number }) => s + p.valor, 0),
+        };
+      });
 
-      const pagMes = (rawPagMes || []) as unknown as { valor: number }[];
-      evolucao.push({ mes: mesLabel, total: count || 0 });
-      receitas.push({ mes: mesLabel, valor: pagMes.reduce((s: number, p: { valor: number }) => s + p.valor, 0) });
+      setData({
+        totalAtivos: totalAtivos || 0,
+        renovacoesPendentes: renovacoesPendentes || 0,
+        receitaMes,
+        inadimplentes: inadimplentes || 0,
+        evolucao,
+        receitas,
+        ultimosBeneficiarios,
+      });
+    } catch (err) {
+      console.error("Dashboard error:", err);
+      setError("Erro ao carregar dashboard. Verifique a conexão com o banco de dados.");
     }
-
-    setData({
-      totalAtivos: totalAtivos || 0,
-      renovacoesPendentes: renovacoesPendentes || 0,
-      receitaMes,
-      inadimplentes: inadimplentes || 0,
-      evolucao,
-      receitas,
-      ultimosBeneficiarios,
-    });
     setLoading(false);
   }
 
@@ -116,6 +133,14 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-red-500">{error}</p>
       </div>
     );
   }
