@@ -29,24 +29,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
+    const supabase = createClient();
+
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error("getSession error:", sessionError);
+          setLoading(false);
+          return;
+        }
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         if (currentUser) {
-          const { data } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("user_id", currentUser.id)
-            .single();
-          setProfile(data as unknown as Profile | null);
+          try {
+            const { data } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("user_id", currentUser.id)
+              .single();
+            setProfile(data as unknown as Profile | null);
+          } catch {
+            // profile not found, continue without it
+          }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.error("initAuth error:", err);
       }
       setLoading(false);
     };
@@ -54,16 +64,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event: unknown, session: unknown) => {
-        const s = session as { user: import("@supabase/supabase-js").User } | null;
-        setUser(s?.user ?? null);
-        if (s?.user) {
-          const { data } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("user_id", s.user.id)
-            .single();
-          setProfile(data as unknown as Profile | null);
+      async (_event: string, session: { user: User } | null) => {
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) {
+          try {
+            const { data } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("user_id", currentUser.id)
+              .single();
+            setProfile(data as unknown as Profile | null);
+          } catch {
+            // profile not found
+          }
         } else {
           setProfile(null);
         }
@@ -75,9 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    const supabase = createClient();
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    window.location.href = "/login";
   };
 
   return (
