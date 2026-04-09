@@ -19,10 +19,10 @@ export default function BeneficiarioDetail({ id, onClose }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
+    supabase.auth.getSession().then(() => Promise.all([
       supabase.from("beneficiarios").select("*, planos(*)").eq("id", id).single(),
       supabase.from("pagamentos").select("*").eq("beneficiario_id", id).order("mes_referencia", { ascending: false }),
-    ]).then(([{ data: b }, { data: p }]) => {
+    ])).then(([{ data: b }, { data: p }]) => {
       setBeneficiario(b as unknown as Beneficiario | null);
       setPagamentos((p || []) as unknown as Pagamento[]);
       setLoading(false);

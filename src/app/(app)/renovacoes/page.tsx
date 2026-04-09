@@ -23,6 +23,7 @@ export default function RenovacoesPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    await supabase.auth.getSession();
 
     // Buscar beneficiários com vencimento no mês filtrado ou próximo
     const [year, month] = filterMes.split("-").map(Number);

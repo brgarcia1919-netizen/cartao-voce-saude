@@ -27,6 +27,7 @@ export default function BeneficiariosPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    await supabase.auth.getSession();
     let query = supabase
       .from("beneficiarios")
       .select("*, planos(*)")

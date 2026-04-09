@@ -29,6 +29,7 @@ export default function FinanceiroPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    await supabase.auth.getSession();
     const [{ data: pag }, { data: ben }] = await Promise.all([
       supabase
         .from("pagamentos")
