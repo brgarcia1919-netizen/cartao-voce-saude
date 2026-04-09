@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCPF, formatCurrency, formatDate } from "@/lib/utils";
@@ -40,7 +40,6 @@ export default function DashboardPage() {
 
   async function loadDashboard() {
     try {
-      const supabase = createClient();
       const now = new Date();
       const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const mesInicioDate = `${mesAtual}-01`;

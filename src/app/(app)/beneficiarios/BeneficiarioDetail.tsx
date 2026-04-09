@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCPF, formatPhone, formatDate, formatCurrency } from "@/lib/utils";
@@ -17,7 +17,6 @@ export default function BeneficiarioDetail({ id, onClose }: Props) {
   const [beneficiario, setBeneficiario] = useState<Beneficiario | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     Promise.all([

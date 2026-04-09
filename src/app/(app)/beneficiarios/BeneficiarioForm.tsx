@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { ArrowLeft, Save } from "lucide-react";
 import type { Beneficiario, Plano, StatusBeneficiario } from "@/lib/types";
@@ -44,8 +44,6 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
   const [error, setError] = useState("");
-  const supabase = createClient();
-
   useEffect(() => {
     if (id) {
       supabase

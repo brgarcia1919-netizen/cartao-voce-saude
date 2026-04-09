@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
@@ -24,7 +24,6 @@ export default function BeneficiariosPage() {
   const [filterMes, setFilterMes] = useState<string>("");
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-  const supabase = createClient();
 
   const loadData = useCallback(async () => {
     setLoading(true);
