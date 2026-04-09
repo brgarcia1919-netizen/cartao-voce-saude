@@ -1,94 +1,103 @@
-# Gestão de Cartão de Benefícios
+# Gestao de Cartao Voce Saude
 
-Sistema web para gestão de cartão de benefícios com controle de beneficiários, renovações e financeiro.
+Sistema web para gestao de cartao de descontos com:
+- Dashboard com indicadores atualizados
+- Cadastro e acompanhamento de beneficiarios
+- Controle de renovacoes mensais
+- Modulo financeiro com pagamentos e inadimplencia
 
 ## Stack
 
-- **Frontend:** Next.js 16 + TypeScript + Tailwind CSS 4
-- **Backend/BD:** Supabase (Auth, Database, RLS)
-- **Gráficos:** Recharts
-- **Ícones:** Lucide React
+- Frontend: Next.js 16 + TypeScript + Tailwind CSS 4
+- Backend/DB/Auth: Supabase
+- Deploy: Vercel
 
-## Instalação
+## Requisitos
 
-### 1. Clonar e instalar dependências
+- Node.js 20+
+- Conta no Supabase
+- (Opcional, recomendado) acesso a connection string Postgres do Supabase para automacao de schema/seed
+
+## Variaveis de ambiente
+
+Copie `.env.example` para `.env.local` e preencha:
+
+```bash
+cp .env.example .env.local
+```
+
+Obrigatorias (aplicacao):
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Opcionais (automacao de banco):
+- `SUPABASE_DB_URL` (ou `DATABASE_URL`)
+- `SUPABASE_DB_SSL` (`true` por padrao)
+
+## Inicializacao do banco
+
+### Opcao A (automatica, recomendada)
+
+Com `SUPABASE_DB_URL` preenchido:
+
+```bash
+npm run db:init
+```
+
+Esse comando aplica:
+1. `supabase/schema.sql`
+2. `supabase/seed.sql`
+
+de forma idempotente (sem duplicar pagamentos/renovacoes ao repetir).
+
+### Opcao B (manual no SQL Editor)
+
+1. Execute `supabase/schema.sql`
+2. Execute `supabase/seed.sql`
+
+## Rodando local
 
 ```bash
 npm install
-```
-
-### 2. Configurar Supabase
-
-1. Crie um projeto em [supabase.com](https://supabase.com)
-2. Copie o arquivo `.env.example` para `.env.local`:
-   ```bash
-   cp .env.example .env.local
-   ```
-3. Preencha as variáveis com as credenciais do seu projeto Supabase (Settings > API)
-
-### 3. Criar tabelas no banco
-
-1. No Supabase, vá em **SQL Editor**
-2. Execute o conteúdo de `supabase/schema.sql`
-3. Para dados de teste, execute `supabase/seed.sql`
-
-### 4. Criar usuários de teste
-
-No Supabase, vá em **Authentication > Users** e crie:
-
-- **Admin:** admin@teste.com (ao criar, o trigger criará o profile automaticamente)
-  - Depois, no SQL Editor, atualize o perfil:
-    ```sql
-    UPDATE profiles SET perfil = 'admin', nome = 'Administrador' WHERE user_id = '<ID_DO_USUARIO>';
-    ```
-
-- **Operador:** operador@teste.com (será criado automaticamente como "operador")
-
-### 5. Rodar o projeto
-
-```bash
 npm run dev
 ```
 
-Acesse [http://localhost:3000](http://localhost:3000)
+Abra `http://localhost:3000`.
 
-## Módulos
+## Scripts uteis
 
-| Módulo | Descrição |
-|--------|-----------|
-| Dashboard | Resumo mensal com gráficos de evolução e receita |
-| Beneficiários | CRUD completo com busca, filtros e export CSV |
-| Renovações | Acompanhamento mensal com alertas de vencimento |
-| Financeiro | Registro de pagamentos e relatório receita esperada vs recebida |
+- `npm run dev` - desenvolvimento
+- `npm run build` - build de producao
+- `npm run typecheck` - validacao TypeScript
+- `npm run db:init` - aplica schema + seed no Postgres
 
-## Perfis de Acesso
+## Usuarios de teste
 
-- **Admin:** acesso total (todos os módulos + edição + financeiro)
-- **Operador:** visualização + cadastro de beneficiários (sem financeiro, sem edição)
+No Supabase, em **Authentication > Users**, crie:
+- `admin@teste.com`
+- `operador@teste.com`
 
-## Estrutura de Arquivos
+O trigger de `schema.sql` cria o profile automaticamente.
+Para promover admin:
 
+```sql
+UPDATE profiles
+SET perfil = 'admin', nome = 'Administrador'
+WHERE user_id = '<ID_DO_USUARIO>';
 ```
-src/
-├── app/
-│   ├── (app)/           # Rotas autenticadas
-│   │   ├── dashboard/
-│   │   ├── beneficiarios/
-│   │   ├── renovacoes/
-│   │   └── financeiro/
-│   ├── login/
-│   └── layout.tsx
-├── components/
-│   ├── ui/             # Componentes reutilizáveis
-│   ├── AppLayout.tsx
-│   ├── Sidebar.tsx
-│   └── ThemeProvider.tsx
-└── lib/
-    ├── supabase/       # Configuração Supabase
-    ├── auth-context.tsx
-    ├── types.ts
-    └── utils.ts
-supabase/
-├── schema.sql          # DDL das tabelas
-└── seed.sql            # Dados fictícios
+
+## Execucao automatica no Claude (prompt pronto)
+
+Se quiser pedir para outro agente executar tudo sem pausas, use este prompt:
+
+```text
+Voce esta no repositorio do projeto Cartao Voce Saude.
+Execute do inicio ao fim sem interromper:
+1) npm install
+2) validar .env.local e avisar variaveis faltantes
+3) se existir SUPABASE_DB_URL, rodar npm run db:init
+4) rodar npm run typecheck
+5) rodar npm run build
+6) se tudo estiver ok, rodar npm run dev
+Se houver erro, corrija o codigo e continue ate concluir com sucesso.
 ```

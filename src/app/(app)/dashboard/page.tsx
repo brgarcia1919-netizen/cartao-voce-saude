@@ -18,6 +18,8 @@ import {
   Line,
 } from "recharts";
 import type { Beneficiario } from "@/lib/types";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 interface DashboardData {
   totalAtivos: number;
@@ -29,121 +31,138 @@ interface DashboardData {
   ultimosBeneficiarios: Beneficiario[];
 }
 
+interface MonthWindow {
+  key: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+}
+
+function buildMonthWindow(baseDate: Date): MonthWindow[] {
+  const months: MonthWindow[] = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const monthDate = new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1);
+    const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+    const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+
+    months.push({
+      key: monthKey,
+      label: monthDate.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+      startDate: `${monthKey}-01`,
+      endDate: `${monthKey}-${String(lastDay).padStart(2, "0")}`,
+    });
+  }
+
+  return months;
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
+
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    if (!supabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
+    void loadDashboard();
+  }, [supabaseConfigured]);
 
   async function loadDashboard() {
     try {
       const supabase = createClient();
-      const now = new Date();
-      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const mesInicioDate = `${mesAtual}-01`;
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const mesFimDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
-
-      // Queries principais - cada uma com tratamento individual
-      const [r1, r2, r3a, r3b, r4a, r4b, r5] = await Promise.all([
-        supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
-        supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
-        // Tenta mes_referencia como TEXT (YYYY-MM)
-        supabase.from("pagamentos").select("valor").eq("mes_referencia", mesAtual).eq("status", "pago"),
-        // Tenta mes_referencia como DATE (range)
-        supabase.from("pagamentos").select("valor").gte("mes_referencia", mesInicioDate).lt("mes_referencia", mesFimDate).eq("status", "pago"),
-        // Inadimplentes - tenta ambos
-        supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "em_atraso"),
-        supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "pendente"),
-        supabase.from("beneficiarios").select("*, planos(*)").order("created_at", { ascending: false }).limit(5),
-      ]);
-
-      // Usa o resultado que funcionou (TEXT ou DATE)
-      const rawPagamentosMes = r3a.error ? (r3b.data || []) : (r3a.data || []);
-      const pagamentosMes = rawPagamentosMes as unknown as { valor: number }[];
-      const ultimosBeneficiarios = (r5.data || []) as unknown as Beneficiario[];
-      const receitaMes = pagamentosMes.reduce((sum: number, p: { valor: number }) => sum + (p.valor || 0), 0);
-
-      // Determina se mes_referencia é TEXT ou DATE
-      const mesRefIsDate = !!r3a.error;
-
-      // Gerar chaves dos últimos 6 meses
-      const meses: { key: string; label: string; startDate: string; endDate: string }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-        meses.push({
-          key,
-          label,
-          startDate: `${key}-01`,
-          endDate: `${key}-${String(lastDay).padStart(2, "0")}`,
-        });
+      if (!supabase) {
+        setError("Supabase não configurado.");
+        return;
       }
 
-      // Queries dos 6 meses em paralelo
+      const now = new Date();
+      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const months = buildMonthWindow(now);
+
+      const [
+        ativosResult,
+        renovacoesResult,
+        pagamentosMesResult,
+        inadimplentesResult,
+        ultimosBeneficiariosResult,
+      ] = await Promise.all([
+        supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
+        supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
+        supabase.from("pagamentos").select("valor").eq("mes_referencia", mesAtual).eq("status", "pago"),
+        supabase
+          .from("pagamentos")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["pendente", "em_atraso"]),
+        supabase
+          .from("beneficiarios")
+          .select("*, planos(*)")
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+
       const [evolucaoResults, receitasResults] = await Promise.all([
         Promise.all(
-          meses.map((m) =>
+          months.map((month) =>
             supabase
               .from("beneficiarios")
               .select("*", { count: "exact", head: true })
-              .lte("data_inicio", m.endDate)
-              .gte("data_vencimento", m.startDate)
+              .lte("data_inicio", month.endDate)
+              .gte("data_vencimento", month.startDate)
           )
         ),
         Promise.all(
-          meses.map((m) => {
-            if (mesRefIsDate) {
-              const nextM = new Date(parseInt(m.key.split("-")[0]), parseInt(m.key.split("-")[1]), 1);
-              const nextKey = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, "0")}-01`;
-              return supabase
-                .from("pagamentos")
-                .select("valor")
-                .gte("mes_referencia", m.startDate)
-                .lt("mes_referencia", nextKey)
-                .eq("status", "pago");
-            }
-            return supabase
+          months.map((month) =>
+            supabase
               .from("pagamentos")
               .select("valor")
-              .eq("mes_referencia", m.key)
-              .eq("status", "pago");
-          })
+              .eq("mes_referencia", month.key)
+              .eq("status", "pago")
+          )
         ),
       ]);
 
-      const evolucao = meses.map((m, i) => ({
-        mes: m.label,
-        total: evolucaoResults[i].count || 0,
+      const pagamentosMes = (pagamentosMesResult.data || []) as unknown as { valor: number }[];
+      const receitaMes = pagamentosMes.reduce((sum, p) => sum + (p.valor || 0), 0);
+
+      const evolucao = months.map((month, index) => ({
+        mes: month.label,
+        total: evolucaoResults[index].count || 0,
       }));
 
-      const receitas = meses.map((m, i) => {
-        const pags = (receitasResults[i].data || []) as unknown as { valor: number }[];
+      const receitas = months.map((month, index) => {
+        const pagamentos = (receitasResults[index].data || []) as unknown as { valor: number }[];
         return {
-          mes: m.label,
-          valor: pags.reduce((s: number, p: { valor: number }) => s + (p.valor || 0), 0),
+          mes: month.label,
+          valor: pagamentos.reduce((sum, p) => sum + (p.valor || 0), 0),
         };
       });
 
       setData({
-        totalAtivos: r1.count || 0,
-        renovacoesPendentes: r2.count || 0,
+        totalAtivos: ativosResult.count || 0,
+        renovacoesPendentes: renovacoesResult.count || 0,
         receitaMes,
-        inadimplentes: r4a.count || r4b.count || 0,
+        inadimplentes: inadimplentesResult.count || 0,
         evolucao,
         receitas,
-        ultimosBeneficiarios,
+        ultimosBeneficiarios: (ultimosBeneficiariosResult.data || []) as unknown as Beneficiario[],
       });
     } catch (err) {
       console.error("Dashboard error:", err);
       setError("Erro ao carregar dashboard. Verifique a conexão com o banco de dados.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  }
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
   }
 
   if (loading) {
@@ -242,7 +261,9 @@ export default function DashboardPage() {
                   <td className="py-2.5">{b.nome}</td>
                   <td className="py-2.5">{formatCPF(b.cpf)}</td>
                   <td className="py-2.5">{b.planos?.nome || "-"}</td>
-                  <td className="py-2.5"><Badge status={b.status} /></td>
+                  <td className="py-2.5">
+                    <Badge status={b.status} />
+                  </td>
                   <td className="py-2.5">{formatDate(b.created_at)}</td>
                 </tr>
               ))}

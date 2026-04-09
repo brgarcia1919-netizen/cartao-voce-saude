@@ -58,10 +58,12 @@ export default function Sidebar() {
       >
         <div className="p-6 border-b border-[var(--border)]">
           <h1 className="text-lg font-bold text-[var(--primary)]">
-            Cartão Benefícios
+            Cartao Voce Saude
           </h1>
           <p className="text-xs text-[var(--muted-foreground)] mt-1">
-            {profile?.nome} • {profile?.perfil === "admin" ? "Admin" : "Operador"}
+            {profile
+              ? `${profile.nome} • ${profile.perfil === "admin" ? "Admin" : "Operador"}`
+              : "Modo sem autenticação"}
           </p>
         </div>
 

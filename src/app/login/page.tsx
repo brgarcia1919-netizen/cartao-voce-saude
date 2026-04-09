@@ -2,20 +2,28 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
-  const supabase = createClient();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
+  const supabaseConfigured = isSupabaseConfigured();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    const supabase = createClient();
+    if (!supabase) {
+      setError("Supabase não configurado. Revise as variáveis de ambiente.");
+      setLoading(false);
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -37,12 +45,18 @@ export default function LoginPage() {
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-8 shadow-lg">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-[var(--primary)]">
-              Cartão Benefícios
+              Cartao Voce Saude
             </h1>
             <p className="text-sm text-[var(--muted-foreground)] mt-1">
               Acesse sua conta
             </p>
           </div>
+
+          {!supabaseConfigured && (
+            <div className="mb-4">
+              <SupabaseConfigNotice missingVars={missingSupabaseVars} />
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>

@@ -11,6 +11,8 @@ import { Plus, Search, Download, Edit2, Eye, X } from "lucide-react";
 import type { Beneficiario, Plano, StatusBeneficiario } from "@/lib/types";
 import BeneficiarioForm from "./BeneficiarioForm";
 import BeneficiarioDetail from "./BeneficiarioDetail";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 export default function BeneficiariosPage() {
   const [beneficiarios, setBeneficiarios] = useState<Beneficiario[]>([]);
@@ -24,10 +26,19 @@ export default function BeneficiariosPage() {
   const [filterMes, setFilterMes] = useState<string>("");
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-  const supabase = createClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const supabase = createClient();
+    if (!supabase) {
+      setBeneficiarios([]);
+      setPlanos([]);
+      setLoading(false);
+      return;
+    }
+
     let query = supabase
       .from("beneficiarios")
       .select("*, planos(*)")
@@ -50,8 +61,12 @@ export default function BeneficiariosPage() {
   }, [filterStatus, filterMes]);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [loadData, supabaseConfigured]);
 
   const filtered = beneficiarios.filter((b) => {
     if (!search) return true;
@@ -110,6 +125,10 @@ export default function BeneficiariosPage() {
         }}
       />
     );
+  }
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
   }
 
   return (

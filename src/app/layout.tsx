@@ -3,8 +3,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "Gestão de Cartão de Benefícios",
-  description: "Sistema de gestão de cartão de benefícios",
+  title: "Gestao Cartao Voce Saude",
+  description: "Sistema de gestao de cartao de descontos Voce Saude",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

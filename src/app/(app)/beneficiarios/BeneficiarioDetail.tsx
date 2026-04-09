@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/Badge";
 import { formatCPF, formatPhone, formatDate, formatCurrency } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import type { Beneficiario, Pagamento } from "@/lib/types";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 interface Props {
   id: string;
@@ -17,9 +19,16 @@ export default function BeneficiarioDetail({ id, onClose }: Props) {
   const [beneficiario, setBeneficiario] = useState<Beneficiario | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
 
   useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
     Promise.all([
       supabase.from("beneficiarios").select("*, planos(*)").eq("id", id).single(),
       supabase.from("pagamentos").select("*").eq("beneficiario_id", id).order("mes_referencia", { ascending: false }),
@@ -29,6 +38,10 @@ export default function BeneficiarioDetail({ id, onClose }: Props) {
       setLoading(false);
     });
   }, [id]);
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
+  }
 
   if (loading) {
     return (

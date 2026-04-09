@@ -10,6 +10,8 @@ import { formatCPF, formatDate } from "@/lib/utils";
 import { CheckCircle, AlertTriangle, Clock } from "lucide-react";
 import type { Renovacao } from "@/lib/types";
 import { differenceInDays, parseISO } from "date-fns";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 export default function RenovacoesPage() {
   const [renovacoes, setRenovacoes] = useState<Renovacao[]>([]);
@@ -20,30 +22,30 @@ export default function RenovacoesPage() {
   });
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-  const supabase = createClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const supabase = createClient();
+    if (!supabase) {
+      setRenovacoes([]);
+      setLoading(false);
+      return;
+    }
 
     // Buscar beneficiários com vencimento no mês filtrado ou próximo
     const [year, month] = filterMes.split("-").map(Number);
     const mesAtual = filterMes;
-
-    // Mês seguinte
-    const nextDate = new Date(year, month, 1);
-    const proxMes = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
-
-    // Range: do 1° dia do mês atual até o último do próximo mês
-    const startDate = `${mesAtual}-01`;
-    const afterProxMes = new Date(year, month + 1, 1);
-    const endDate = `${afterProxMes.getFullYear()}-${String(afterProxMes.getMonth() + 1).padStart(2, "0")}-01`;
+    const proxMesDate = new Date(year, month, 1);
+    const proxMes = `${proxMesDate.getFullYear()}-${String(proxMesDate.getMonth() + 1).padStart(2, "0")}`;
 
     // Buscar renovações existentes
     const { data } = await supabase
       .from("renovacoes")
       .select("*, beneficiarios(*, planos(*))")
-      .gte("mes_referencia", startDate)
-      .lt("mes_referencia", endDate)
+      .gte("mes_referencia", mesAtual)
+      .lte("mes_referencia", proxMes)
       .order("mes_referencia", { ascending: true });
 
     setRenovacoes((data || []) as unknown as Renovacao[]);
@@ -51,10 +53,20 @@ export default function RenovacoesPage() {
   }, [filterMes]);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [loadData, supabaseConfigured]);
 
   const marcarRenovado = async (id: string) => {
+    const supabase = createClient();
+    if (!supabase) {
+      toast("Supabase não configurado.", "error");
+      return;
+    }
+
     const { error } = await supabase
       .from("renovacoes")
       .update({
@@ -72,6 +84,12 @@ export default function RenovacoesPage() {
   };
 
   const marcarCancelado = async (id: string) => {
+    const supabase = createClient();
+    if (!supabase) {
+      toast("Supabase não configurado.", "error");
+      return;
+    }
+
     const { error } = await supabase
       .from("renovacoes")
       .update({ status: "cancelado" } as never)
@@ -93,6 +111,10 @@ export default function RenovacoesPage() {
     );
     return dias >= 0 && dias <= 7;
   };
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
+  }
 
   return (
     <div className="space-y-6">

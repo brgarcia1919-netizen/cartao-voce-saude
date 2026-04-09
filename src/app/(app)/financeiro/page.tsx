@@ -8,6 +8,8 @@ import { useToast } from "@/components/ui/Toast";
 import { formatCPF, formatCurrency, formatDate } from "@/lib/utils";
 import { DollarSign, TrendingUp, TrendingDown, Plus } from "lucide-react";
 import type { Pagamento, Beneficiario } from "@/lib/types";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 export default function FinanceiroPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
@@ -19,7 +21,8 @@ export default function FinanceiroPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const { toast } = useToast();
-  const supabase = createClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
 
   // Form state
   const [formBeneficiario, setFormBeneficiario] = useState("");
@@ -30,12 +33,19 @@ export default function FinanceiroPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const supabase = createClient();
+    if (!supabase) {
+      setPagamentos([]);
+      setBeneficiarios([]);
+      setLoading(false);
+      return;
+    }
+
     const [{ data: pag }, { data: ben }] = await Promise.all([
       supabase
         .from("pagamentos")
         .select("*, beneficiarios(nome, cpf)")
-        .gte("mes_referencia", `${filterMes}-01`)
-        .lt("mes_referencia", (() => { const [y,m] = filterMes.split("-").map(Number); const n = new Date(y, m, 1); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-01`; })())
+        .eq("mes_referencia", filterMes)
         .order("data_pagamento", { ascending: false }),
       supabase.from("beneficiarios").select("*, planos(*)").eq("status", "ativo"),
     ]);
@@ -45,8 +55,12 @@ export default function FinanceiroPage() {
   }, [filterMes]);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [loadData, supabaseConfigured]);
 
   const receitaEsperada = beneficiarios.reduce(
     (sum, b) => sum + (b.planos?.valor_mensal || 0),
@@ -63,13 +77,25 @@ export default function FinanceiroPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase.from("pagamentos").insert({
-      beneficiario_id: formBeneficiario,
-      mes_referencia: `${filterMes}-01`,
-      valor: parseFloat(formValor),
-      status: formStatus,
-      data_pagamento: formStatus === "pago" ? formData : null,
-    } as never);
+    const supabase = createClient();
+    if (!supabase) {
+      toast("Supabase não configurado.", "error");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase.from("pagamentos").upsert(
+      {
+        beneficiario_id: formBeneficiario,
+        mes_referencia: filterMes,
+        valor: parseFloat(formValor),
+        status: formStatus,
+        data_pagamento: formStatus === "pago" ? formData : null,
+      } as never,
+      {
+        onConflict: "beneficiario_id,mes_referencia",
+      }
+    );
 
     if (error) {
       toast(error.message, "error");
@@ -77,7 +103,7 @@ export default function FinanceiroPage() {
       return;
     }
 
-    toast("Pagamento registrado!");
+    toast("Pagamento registrado/atualizado!");
     setShowForm(false);
     setFormBeneficiario("");
     setFormValor("");
@@ -86,6 +112,12 @@ export default function FinanceiroPage() {
   };
 
   const updateStatus = async (id: string, newStatus: "pago" | "pendente" | "em_atraso") => {
+    const supabase = createClient();
+    if (!supabase) {
+      toast("Supabase não configurado.", "error");
+      return;
+    }
+
     const update: { status: "pago" | "pendente" | "em_atraso"; data_pagamento?: string | null } = { status: newStatus };
     if (newStatus === "pago") {
       update.data_pagamento = new Date().toISOString().slice(0, 10);
@@ -99,6 +131,10 @@ export default function FinanceiroPage() {
     toast("Status atualizado!");
     loadData();
   };
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
+  }
 
   return (
     <div className="space-y-6">

@@ -60,6 +60,18 @@ CREATE INDEX IF NOT EXISTS idx_beneficiarios_vencimento ON beneficiarios(data_ve
 CREATE INDEX IF NOT EXISTS idx_renovacoes_mes ON renovacoes(mes_referencia);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_mes ON pagamentos(mes_referencia);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_status ON pagamentos(status);
+DELETE FROM renovacoes a
+USING renovacoes b
+WHERE a.ctid < b.ctid
+  AND a.beneficiario_id = b.beneficiario_id
+  AND a.mes_referencia = b.mes_referencia;
+DELETE FROM pagamentos a
+USING pagamentos b
+WHERE a.ctid < b.ctid
+  AND a.beneficiario_id = b.beneficiario_id
+  AND a.mes_referencia = b.mes_referencia;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_renovacoes_beneficiario_mes ON renovacoes(beneficiario_id, mes_referencia);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pagamentos_beneficiario_mes ON pagamentos(beneficiario_id, mes_referencia);
 
 -- RLS (Row Level Security)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -69,6 +81,11 @@ ALTER TABLE renovacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagamentos ENABLE ROW LEVEL SECURITY;
 
 -- Políticas: usuários autenticados podem ler tudo
+DROP POLICY IF EXISTS "Authenticated users can read profiles" ON profiles;
+DROP POLICY IF EXISTS "Authenticated users can read beneficiarios" ON beneficiarios;
+DROP POLICY IF EXISTS "Authenticated users can read planos" ON planos;
+DROP POLICY IF EXISTS "Authenticated users can read renovacoes" ON renovacoes;
+DROP POLICY IF EXISTS "Authenticated users can read pagamentos" ON pagamentos;
 CREATE POLICY "Authenticated users can read profiles" ON profiles FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated users can read beneficiarios" ON beneficiarios FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated users can read planos" ON planos FOR SELECT TO authenticated USING (true);
@@ -76,6 +93,16 @@ CREATE POLICY "Authenticated users can read renovacoes" ON renovacoes FOR SELECT
 CREATE POLICY "Authenticated users can read pagamentos" ON pagamentos FOR SELECT TO authenticated USING (true);
 
 -- Políticas: usuários autenticados podem inserir/atualizar
+DROP POLICY IF EXISTS "Authenticated users can insert beneficiarios" ON beneficiarios;
+DROP POLICY IF EXISTS "Authenticated users can update beneficiarios" ON beneficiarios;
+DROP POLICY IF EXISTS "Authenticated users can insert renovacoes" ON renovacoes;
+DROP POLICY IF EXISTS "Authenticated users can update renovacoes" ON renovacoes;
+DROP POLICY IF EXISTS "Authenticated users can insert pagamentos" ON pagamentos;
+DROP POLICY IF EXISTS "Authenticated users can update pagamentos" ON pagamentos;
+DROP POLICY IF EXISTS "Authenticated users can insert planos" ON planos;
+DROP POLICY IF EXISTS "Authenticated users can update planos" ON planos;
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Authenticated users can insert beneficiarios" ON beneficiarios FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Authenticated users can update beneficiarios" ON beneficiarios FOR UPDATE TO authenticated USING (true);
 CREATE POLICY "Authenticated users can insert renovacoes" ON renovacoes FOR INSERT TO authenticated WITH CHECK (true);

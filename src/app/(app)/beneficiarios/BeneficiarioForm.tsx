@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { ArrowLeft, Save } from "lucide-react";
 import type { Beneficiario, Plano, StatusBeneficiario } from "@/lib/types";
+import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 interface Props {
   id: string | null;
@@ -44,9 +46,16 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
   const [error, setError] = useState("");
-  const supabase = createClient();
+  const supabaseConfigured = isSupabaseConfigured();
+  const missingSupabaseVars = getMissingSupabaseEnvVars();
 
   useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) {
+      setLoadingData(false);
+      return;
+    }
+
     if (id) {
       supabase
         .from("beneficiarios")
@@ -78,6 +87,13 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    const supabase = createClient();
+    if (!supabase) {
+      setError("Supabase não configurado.");
+      setLoading(false);
+      return;
+    }
 
     const cpfClean = form.cpf.replace(/\D/g, "");
     if (cpfClean.length !== 11) {
@@ -123,6 +139,10 @@ export default function BeneficiarioForm({ id, planos, onClose, onSaved }: Props
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--primary)]" />
       </div>
     );
+  }
+
+  if (!supabaseConfigured) {
+    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
   }
 
   return (
