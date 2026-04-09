@@ -17,130 +17,114 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import type { Beneficiario } from "@/lib/types";
 
-interface DashboardData {
-  totalAtivos: number;
-  renovacoesPendentes: number;
-  receitaMes: number;
-  inadimplentes: number;
-  evolucao: { mes: string; total: number }[];
-  receitas: { mes: string; valor: number }[];
-  ultimosBeneficiarios: Beneficiario[];
+interface BeneficiarioRow {
+  id: string;
+  nome: string;
+  cpf: string;
+  status: string;
+  data_inicio: string;
+  data_vencimento: string;
+  created_at: string;
+  planos: { nome: string } | null;
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [totalAtivos, setTotalAtivos] = useState(0);
+  const [renovacoesPendentes, setRenovacoesPendentes] = useState(0);
+  const [receitaMes, setReceitaMes] = useState(0);
+  const [inadimplentes, setInadimplentes] = useState(0);
+  const [evolucao, setEvolucao] = useState<{ mes: string; total: number }[]>([]);
+  const [receitas, setReceitas] = useState<{ mes: string; valor: number }[]>([]);
+  const [ultimos, setUltimos] = useState<BeneficiarioRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadDashboard();
+    loadData();
   }, []);
 
-  async function loadDashboard() {
+  async function loadData() {
     try {
+      // --- Cards ---
+      const { count: ativos } = await supabase
+        .from("beneficiarios")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "ativo");
+      setTotalAtivos(ativos || 0);
+
+      const { count: pendentes } = await supabase
+        .from("renovacoes")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pendente");
+      setRenovacoesPendentes(pendentes || 0);
+
+      const { count: atraso } = await supabase
+        .from("pagamentos")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "em_atraso");
+      setInadimplentes(atraso || 0);
+
+      // Receita do mes - usa date range
       const now = new Date();
-      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const mesInicioDate = `${mesAtual}-01`;
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const mesFimDate = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+      const mesInicio = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const proxMes = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const mesFim = `${proxMes.getFullYear()}-${String(proxMes.getMonth() + 1).padStart(2, "0")}-01`;
 
-      // Queries principais - cada uma com tratamento individual
-      const [r1, r2, r3a, r3b, r4a, r4b, r5] = await Promise.all([
-        supabase.from("beneficiarios").select("*", { count: "exact", head: true }).eq("status", "ativo"),
-        supabase.from("renovacoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
-        // Tenta mes_referencia como TEXT (YYYY-MM)
-        supabase.from("pagamentos").select("valor").eq("mes_referencia", mesAtual).eq("status", "pago"),
-        // Tenta mes_referencia como DATE (range)
-        supabase.from("pagamentos").select("valor").gte("mes_referencia", mesInicioDate).lt("mes_referencia", mesFimDate).eq("status", "pago"),
-        // Inadimplentes - tenta ambos
-        supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "em_atraso"),
-        supabase.from("pagamentos").select("*", { count: "exact", head: true }).eq("status", "pendente"),
-        supabase.from("beneficiarios").select("*, planos(*)").order("created_at", { ascending: false }).limit(5),
-      ]);
+      const { data: pagsMes } = await supabase
+        .from("pagamentos")
+        .select("valor")
+        .gte("mes_referencia", mesInicio)
+        .lt("mes_referencia", mesFim)
+        .eq("status", "pago");
 
-      // Usa o resultado que funcionou (TEXT ou DATE)
-      const rawPagamentosMes = r3a.error ? (r3b.data || []) : (r3a.data || []);
-      const pagamentosMes = rawPagamentosMes as unknown as { valor: number }[];
-      const ultimosBeneficiarios = (r5.data || []) as unknown as Beneficiario[];
-      const receitaMes = pagamentosMes.reduce((sum: number, p: { valor: number }) => sum + (p.valor || 0), 0);
+      const receita = (pagsMes || []).reduce((s: number, p: { valor: number }) => s + Number(p.valor || 0), 0);
+      setReceitaMes(receita);
 
-      // Determina se mes_referencia é TEXT ou DATE
-      const mesRefIsDate = !!r3a.error;
+      // --- Ultimos beneficiarios ---
+      const { data: ultimosData } = await supabase
+        .from("beneficiarios")
+        .select("id, nome, cpf, status, data_inicio, data_vencimento, created_at, planos(nome)")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      setUltimos((ultimosData || []) as unknown as BeneficiarioRow[]);
 
-      // Gerar chaves dos últimos 6 meses
-      const meses: { key: string; label: string; startDate: string; endDate: string }[] = [];
+      // --- Graficos: evolucao e receita dos ultimos 6 meses ---
+      const evolucaoArr: { mes: string; total: number }[] = [];
+      const receitasArr: { mes: string; valor: number }[] = [];
+
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
         const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-        meses.push({
-          key,
-          label,
-          startDate: `${key}-01`,
-          endDate: `${key}-${String(lastDay).padStart(2, "0")}`,
-        });
+        const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+        const end = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+        const { count: benCount } = await supabase
+          .from("beneficiarios")
+          .select("*", { count: "exact", head: true })
+          .lte("data_inicio", end)
+          .gte("data_vencimento", start);
+        evolucaoArr.push({ mes: label, total: benCount || 0 });
+
+        const nextM = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        const nextStart = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, "0")}-01`;
+        const { data: recData } = await supabase
+          .from("pagamentos")
+          .select("valor")
+          .gte("mes_referencia", start)
+          .lt("mes_referencia", nextStart)
+          .eq("status", "pago");
+
+        const val = (recData || []).reduce((s: number, p: { valor: number }) => s + Number(p.valor || 0), 0);
+        receitasArr.push({ mes: label, valor: val });
       }
 
-      // Queries dos 6 meses em paralelo
-      const [evolucaoResults, receitasResults] = await Promise.all([
-        Promise.all(
-          meses.map((m) =>
-            supabase
-              .from("beneficiarios")
-              .select("*", { count: "exact", head: true })
-              .lte("data_inicio", m.endDate)
-              .gte("data_vencimento", m.startDate)
-          )
-        ),
-        Promise.all(
-          meses.map((m) => {
-            if (mesRefIsDate) {
-              const nextM = new Date(parseInt(m.key.split("-")[0]), parseInt(m.key.split("-")[1]), 1);
-              const nextKey = `${nextM.getFullYear()}-${String(nextM.getMonth() + 1).padStart(2, "0")}-01`;
-              return supabase
-                .from("pagamentos")
-                .select("valor")
-                .gte("mes_referencia", m.startDate)
-                .lt("mes_referencia", nextKey)
-                .eq("status", "pago");
-            }
-            return supabase
-              .from("pagamentos")
-              .select("valor")
-              .eq("mes_referencia", m.key)
-              .eq("status", "pago");
-          })
-        ),
-      ]);
-
-      const evolucao = meses.map((m, i) => ({
-        mes: m.label,
-        total: evolucaoResults[i].count || 0,
-      }));
-
-      const receitas = meses.map((m, i) => {
-        const pags = (receitasResults[i].data || []) as unknown as { valor: number }[];
-        return {
-          mes: m.label,
-          valor: pags.reduce((s: number, p: { valor: number }) => s + (p.valor || 0), 0),
-        };
-      });
-
-      setData({
-        totalAtivos: r1.count || 0,
-        renovacoesPendentes: r2.count || 0,
-        receitaMes,
-        inadimplentes: r4a.count || r4b.count || 0,
-        evolucao,
-        receitas,
-        ultimosBeneficiarios,
-      });
+      setEvolucao(evolucaoArr);
+      setReceitas(receitasArr);
     } catch (err) {
       console.error("Dashboard error:", err);
-      setError("Erro ao carregar dashboard. Verifique a conexão com o banco de dados.");
+      setError("Erro ao carregar dados. Tente recarregar a página.");
     }
     setLoading(false);
   }
@@ -155,19 +139,20 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-red-500">{error}</p>
+        <button onClick={() => { setError(""); setLoading(true); loadData(); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+          Tentar novamente
+        </button>
       </div>
     );
   }
 
-  if (!data) return null;
-
   const cards = [
-    { label: "Beneficiários Ativos", value: data.totalAtivos, icon: Users, color: "text-blue-500" },
-    { label: "Renovações Pendentes", value: data.renovacoesPendentes, icon: RefreshCw, color: "text-yellow-500" },
-    { label: "Receita do Mês", value: formatCurrency(data.receitaMes), icon: DollarSign, color: "text-green-500" },
-    { label: "Inadimplentes", value: data.inadimplentes, icon: AlertTriangle, color: "text-red-500" },
+    { label: "Beneficiários Ativos", value: totalAtivos, icon: Users, color: "text-blue-500" },
+    { label: "Renovações Pendentes", value: renovacoesPendentes, icon: RefreshCw, color: "text-yellow-500" },
+    { label: "Receita do Mês", value: formatCurrency(receitaMes), icon: DollarSign, color: "text-green-500" },
+    { label: "Inadimplentes", value: inadimplentes, icon: AlertTriangle, color: "text-red-500" },
   ];
 
   return (
@@ -194,7 +179,7 @@ export default function DashboardPage() {
             Evolução de Beneficiários (6 meses)
           </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.evolucao}>
+            <BarChart data={evolucao}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="mes" fontSize={12} />
               <YAxis fontSize={12} />
@@ -209,7 +194,7 @@ export default function DashboardPage() {
             Receita Mensal (6 meses)
           </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={data.receitas}>
+            <LineChart data={receitas}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="mes" fontSize={12} />
               <YAxis fontSize={12} tickFormatter={(v) => `R$${v}`} />
@@ -224,30 +209,34 @@ export default function DashboardPage() {
         <h3 className="text-sm font-semibold mb-4 text-[var(--muted-foreground)]">
           Últimos Beneficiários Cadastrados
         </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)]">
-                <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Nome</th>
-                <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">CPF</th>
-                <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Plano</th>
-                <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Status</th>
-                <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Cadastro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.ultimosBeneficiarios.map((b) => (
-                <tr key={b.id} className="border-b border-[var(--border)] last:border-0">
-                  <td className="py-2.5">{b.nome}</td>
-                  <td className="py-2.5">{formatCPF(b.cpf)}</td>
-                  <td className="py-2.5">{b.planos?.nome || "-"}</td>
-                  <td className="py-2.5"><Badge status={b.status} /></td>
-                  <td className="py-2.5">{formatDate(b.created_at)}</td>
+        {ultimos.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Nenhum beneficiário cadastrado.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)]">
+                  <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Nome</th>
+                  <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">CPF</th>
+                  <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Plano</th>
+                  <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Status</th>
+                  <th className="text-left py-2 font-medium text-[var(--muted-foreground)]">Cadastro</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {ultimos.map((b) => (
+                  <tr key={b.id} className="border-b border-[var(--border)] last:border-0">
+                    <td className="py-2.5">{b.nome}</td>
+                    <td className="py-2.5">{formatCPF(b.cpf)}</td>
+                    <td className="py-2.5">{b.planos?.nome || "-"}</td>
+                    <td className="py-2.5"><Badge status={b.status} /></td>
+                    <td className="py-2.5">{formatDate(b.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );
