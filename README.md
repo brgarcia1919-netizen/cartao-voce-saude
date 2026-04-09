@@ -87,6 +87,12 @@ npx playwright install chromium
 SMOKE_EMAIL=seu@email.com SMOKE_PASSWORD=suaSenha npm run smoke
 ```
 
+Alternativa: defina `SMOKE_EMAIL` e `SMOKE_PASSWORD` no `.env.local` e rode apenas:
+
+```bash
+npm run smoke
+```
+
 Variaveis opcionais:
 - `SMOKE_PORT` (padrao: `3010`)
 - `SMOKE_BASE_URL` (se quiser apontar para um ambiente ja rodando)

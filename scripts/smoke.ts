@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { config as loadEnv } from "dotenv";
 import { chromium } from "playwright";
+
+loadEnv({ path: ".env.local" });
+loadEnv();
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.SMOKE_PORT || 3010);
@@ -13,7 +17,8 @@ function requiredEnv(name: string) {
   if (!value) {
     throw new Error(
       `Variável obrigatória ausente: ${name}. Exemplo de uso:\n` +
-        `SMOKE_EMAIL=seu@email.com SMOKE_PASSWORD=suaSenha npm run smoke`
+        `SMOKE_EMAIL=seu@email.com SMOKE_PASSWORD=suaSenha npm run smoke\n` +
+        `Ou defina essas variáveis no .env.local`
     );
   }
   return value;
