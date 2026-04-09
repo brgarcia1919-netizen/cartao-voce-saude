@@ -63,4 +63,30 @@ Acesse `http://localhost:3000`.
 - `npm run dev` - ambiente de desenvolvimento
 - `npm run typecheck` - validacao TypeScript
 - `npm run build` - build de producao
+- `npm run smoke` - smoke test E2E (login + modulos principais)
 - `npm run db:init` - aplica schema e seed
+
+## Smoke test automatico (anti-quebra)
+
+Este teste valida em navegador real:
+- login
+- dashboard
+- beneficiarios
+- renovacoes
+- financeiro (acesso ou bloqueio esperado por perfil)
+
+### Primeira execucao
+
+```bash
+npx playwright install chromium
+```
+
+### Rodar smoke
+
+```bash
+SMOKE_EMAIL=seu@email.com SMOKE_PASSWORD=suaSenha npm run smoke
+```
+
+Variaveis opcionais:
+- `SMOKE_PORT` (padrao: `3010`)
+- `SMOKE_BASE_URL` (se quiser apontar para um ambiente ja rodando)
