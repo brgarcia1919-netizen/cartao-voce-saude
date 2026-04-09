@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { ensureSupabaseAuthReady, supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCPF, formatCurrency, formatDate, getMesAtual } from "@/lib/utils";
@@ -66,6 +66,7 @@ export default function DashboardPage() {
 
   async function loadDashboard() {
     try {
+      await ensureSupabaseAuthReady();
       const now = new Date();
       const mesAtual = getMesAtual();
       const months = buildMonthWindow(now);

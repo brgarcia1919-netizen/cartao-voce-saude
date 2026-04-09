@@ -2,14 +2,20 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, missingSupabaseEnvVars } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const supabaseConfigured = isSupabaseConfigured();
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!supabaseConfigured) {
+      setError(`Configuração ausente: ${missingSupabaseEnvVars.join(", ")}`);
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -41,6 +47,11 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
+            {!supabaseConfigured && (
+              <p className="text-sm text-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 rounded-lg">
+                Configure as variáveis: {missingSupabaseEnvVars.join(", ")}
+              </p>
+            )}
             <div>
               <label className="block text-sm font-medium mb-1.5">E-mail</label>
               <input

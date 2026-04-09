@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, ensureSupabaseAuthReady } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
@@ -10,7 +10,6 @@ import { formatCPF, formatDate } from "@/lib/utils";
 import { CheckCircle, AlertTriangle, Clock } from "lucide-react";
 import type { Renovacao } from "@/lib/types";
 import { differenceInDays, parseISO } from "date-fns";
-
 export default function RenovacoesPage() {
   const [renovacoes, setRenovacoes] = useState<Renovacao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +23,13 @@ export default function RenovacoesPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      setLoading(false);
+      return;
+    }
     const [year, month] = filterMes.split("-").map(Number);
     const firstDay = `${filterMes}-01`;
     const lastDay = `${filterMes}-31`;
@@ -90,6 +96,12 @@ export default function RenovacoesPage() {
   }, [loadData]);
 
   const marcarRenovado = async (id: string) => {
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      return;
+    }
     const { error } = await supabase
       .from("renovacoes")
       .update({
@@ -107,6 +119,12 @@ export default function RenovacoesPage() {
   };
 
   const marcarCancelado = async (id: string) => {
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      return;
+    }
     const { error } = await supabase
       .from("renovacoes")
       .update({ status: "cancelado" })

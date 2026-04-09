@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/lib/auth-context";
-import { supabase } from "@/lib/supabase";
+import { ensureSupabaseAuthReady, supabase } from "@/lib/supabase";
 import type { Beneficiario, Pagamento, Renovacao, StatusBeneficiario } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -55,6 +55,14 @@ export default function BeneficiarioDetalhePage() {
   }, [params.id]);
 
   async function loadData() {
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     const [beneficiarioResult, pagamentosResult, renovacoesResult] = await Promise.all([
@@ -100,6 +108,14 @@ export default function BeneficiarioDetalhePage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      setSaving(false);
+      return;
+    }
 
     const cpfClean = form.cpf.replace(/\D/g, "");
     if (cpfClean.length !== 11) {

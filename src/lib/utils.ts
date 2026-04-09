@@ -15,6 +15,12 @@ export function formatDate(date: string | null): string {
   return new Date(date).toLocaleDateString("pt-BR");
 }
 
+export function getMesAnterior(mesAtual: string): string {
+  const [ano, mes] = mesAtual.split("-").map(Number);
+  const data = new Date(ano, mes - 2, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 11) {

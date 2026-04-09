@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatCPF, formatCurrency, formatDate } from "@/lib/utils";
 import { DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import type { Pagamento, Beneficiario } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
+import { supabase, ensureSupabaseAuthReady } from "@/lib/supabase";
 
 export default function FinanceiroPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
@@ -27,6 +27,16 @@ export default function FinanceiroPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha ao inicializar autenticação.";
+      setError(message);
+      setLoading(false);
+      return;
+    }
+
     const [{ data: pag, error: pagError }, { data: ben, error: benError }] =
       await Promise.all([
       supabase
@@ -72,6 +82,16 @@ export default function FinanceiroPage() {
   const gerarPagamentosDoMes = async () => {
     setSaving(true);
 
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha ao inicializar autenticação.";
+      toast.error(message);
+      setSaving(false);
+      return;
+    }
+
     const novos = beneficiarios
       .filter(
         (b) => !pagamentos.some((p) => p.beneficiario_id === b.id && p.mes_referencia === filterMes)
@@ -103,6 +123,15 @@ export default function FinanceiroPage() {
   };
 
   const updateStatus = async (id: string, newStatus: "pago" | "em_atraso") => {
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha ao inicializar autenticação.";
+      toast.error(message);
+      return;
+    }
+
     const update: { status: "pago" | "em_atraso"; data_pagamento?: string | null } = { status: newStatus };
     if (newStatus === "pago") {
       update.data_pagamento = new Date().toISOString().slice(0, 10);

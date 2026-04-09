@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
-import { supabase } from "@/lib/supabase";
+import { supabase, ensureSupabaseAuthReady } from "@/lib/supabase";
 import type { Plano } from "@/lib/types";
 
 interface FormData {
@@ -42,6 +42,7 @@ export default function NovoBeneficiarioPage() {
   const router = useRouter();
 
   useEffect(() => {
+    void ensureSupabaseAuthReady();
     supabase
       .from("planos")
       .select("*")
@@ -68,6 +69,16 @@ export default function NovoBeneficiarioPage() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (sessionError) {
+      const message =
+        sessionError instanceof Error ? sessionError.message : "Falha ao inicializar sessão.";
+      setError(message);
+      toast.error(message);
+      setSaving(false);
+      return;
+    }
 
     const cpfClean = form.cpf.replace(/\D/g, "");
     if (cpfClean.length !== 11) {

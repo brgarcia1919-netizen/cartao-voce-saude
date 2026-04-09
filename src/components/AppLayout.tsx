@@ -23,7 +23,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-[var(--muted-foreground)]">
+        Redirecionando para login...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">

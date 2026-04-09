@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { exportCSV, formatCPF, formatDate, formatPhone } from "@/lib/utils";
 import { Download, Eye, Plus, Search } from "lucide-react";
 import type { Beneficiario } from "@/lib/types";
+import { ensureSupabaseAuthReady } from "@/lib/supabase";
 
 export default function BeneficiariosPage() {
   const [beneficiarios, setBeneficiarios] = useState<Beneficiario[]>([]);
@@ -24,6 +25,13 @@ export default function BeneficiariosPage() {
 
   async function loadBeneficiarios() {
     setLoading(true);
+    try {
+      await ensureSupabaseAuthReady();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha na autenticação.");
+      setLoading(false);
+      return;
+    }
 
     const { data, error } = await supabase
       .from("beneficiarios")
