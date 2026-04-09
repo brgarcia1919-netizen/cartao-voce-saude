@@ -1,66 +1,59 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/lib/auth-context";
 import { formatCPF, formatCurrency, formatDate } from "@/lib/utils";
-import { DollarSign, TrendingUp, TrendingDown, Plus } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import type { Pagamento, Beneficiario } from "@/lib/types";
-import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
-import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
+import { supabase } from "@/lib/supabase";
 
 export default function FinanceiroPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [beneficiarios, setBeneficiarios] = useState<Beneficiario[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [filterMes, setFilterMes] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const { toast } = useToast();
-  const supabaseConfigured = isSupabaseConfigured();
-  const missingSupabaseVars = getMissingSupabaseEnvVars();
+  const { isAdmin } = useAuth();
 
-  // Form state
-  const [formBeneficiario, setFormBeneficiario] = useState("");
-  const [formValor, setFormValor] = useState("");
-  const [formStatus, setFormStatus] = useState<"pago" | "pendente" | "em_atraso">("pago");
-  const [formData, setFormData] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-    if (!supabase) {
-      setPagamentos([]);
-      setBeneficiarios([]);
-      setLoading(false);
-      return;
-    }
-
-    const [{ data: pag }, { data: ben }] = await Promise.all([
+    setError(null);
+    const [{ data: pag, error: pagError }, { data: ben, error: benError }] =
+      await Promise.all([
       supabase
         .from("pagamentos")
         .select("*, beneficiarios(nome, cpf)")
         .eq("mes_referencia", filterMes)
-        .order("data_pagamento", { ascending: false }),
+        .order("status", { ascending: true }),
       supabase.from("beneficiarios").select("*, planos(*)").eq("status", "ativo"),
-    ]);
+      ]);
+
+    if (pagError) {
+      toast.error(pagError.message);
+      setError(pagError.message);
+    }
+    if (benError) {
+      toast.error(benError.message);
+      setError(benError.message);
+    }
+
     setPagamentos((pag || []) as unknown as Pagamento[]);
     setBeneficiarios((ben || []) as unknown as Beneficiario[]);
     setLoading(false);
-  }, [filterMes]);
+  }, [filterMes, toast]);
 
   useEffect(() => {
-    if (!supabaseConfigured) {
-      setLoading(false);
-      return;
-    }
-    loadData();
-  }, [loadData, supabaseConfigured]);
+    void loadData();
+  }, [loadData]);
 
   const receitaEsperada = beneficiarios.reduce(
     (sum, b) => sum + (b.planos?.valor_mensal || 0),
@@ -70,70 +63,65 @@ export default function FinanceiroPage() {
     .filter((p) => p.status === "pago")
     .reduce((sum, p) => sum + p.valor, 0);
   const totalPendente = pagamentos
-    .filter((p) => p.status === "pendente" || p.status === "em_atraso")
+    .filter((p) => p.status === "pendente")
+    .reduce((sum, p) => sum + p.valor, 0);
+  const totalAtraso = pagamentos
+    .filter((p) => p.status === "em_atraso")
     .reduce((sum, p) => sum + p.valor, 0);
 
-  const handleAddPagamento = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const gerarPagamentosDoMes = async () => {
     setSaving(true);
 
-    const supabase = createClient();
-    if (!supabase) {
-      toast("Supabase não configurado.", "error");
+    const novos = beneficiarios
+      .filter(
+        (b) => !pagamentos.some((p) => p.beneficiario_id === b.id && p.mes_referencia === filterMes)
+      )
+      .map((b) => ({
+        beneficiario_id: b.id,
+        mes_referencia: filterMes,
+        valor: b.planos?.valor_mensal || 0,
+        status: "pendente" as const,
+      }));
+
+    if (novos.length === 0) {
+      toast.success("Todos os pagamentos deste mês já existem.");
       setSaving(false);
       return;
     }
 
-    const { error } = await supabase.from("pagamentos").upsert(
-      {
-        beneficiario_id: formBeneficiario,
-        mes_referencia: filterMes,
-        valor: parseFloat(formValor),
-        status: formStatus,
-        data_pagamento: formStatus === "pago" ? formData : null,
-      } as never,
-      {
-        onConflict: "beneficiario_id,mes_referencia",
-      }
-    );
+    const { error } = await supabase.from("pagamentos").insert(novos);
 
     if (error) {
-      toast(error.message, "error");
+      toast.error(error.message);
       setSaving(false);
       return;
     }
 
-    toast("Pagamento registrado/atualizado!");
-    setShowForm(false);
-    setFormBeneficiario("");
-    setFormValor("");
+    toast.success("Pagamentos do mês gerados com sucesso!");
     setSaving(false);
-    loadData();
+    await loadData();
   };
 
-  const updateStatus = async (id: string, newStatus: "pago" | "pendente" | "em_atraso") => {
-    const supabase = createClient();
-    if (!supabase) {
-      toast("Supabase não configurado.", "error");
-      return;
-    }
-
-    const update: { status: "pago" | "pendente" | "em_atraso"; data_pagamento?: string | null } = { status: newStatus };
+  const updateStatus = async (id: string, newStatus: "pago" | "em_atraso") => {
+    const update: { status: "pago" | "em_atraso"; data_pagamento?: string | null } = { status: newStatus };
     if (newStatus === "pago") {
       update.data_pagamento = new Date().toISOString().slice(0, 10);
     }
 
-    const { error } = await supabase.from("pagamentos").update(update as never).eq("id", id);
+    const { error } = await supabase.from("pagamentos").update(update).eq("id", id);
     if (error) {
-      toast(error.message, "error");
+      toast.error(error.message);
       return;
     }
-    toast("Status atualizado!");
-    loadData();
+    toast.success("Status atualizado!");
+    await loadData();
   };
-
-  if (!supabaseConfigured) {
-    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
+  if (!isAdmin) {
+    return (
+      <div className="py-10 text-center text-[var(--muted-foreground)]">
+        Voce nao tem permissao para acessar o modulo financeiro.
+      </div>
+    );
   }
 
   return (
@@ -148,16 +136,23 @@ export default function FinanceiroPage() {
             className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
           />
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={gerarPagamentosDoMes}
+            disabled={saving}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 transition-opacity"
           >
-            <Plus size={16} /> Pagamento
+            {saving ? "Gerando..." : "Gerar Pagamentos do Mes"}
           </button>
         </div>
       </div>
 
+      {error && (
+        <Card>
+          <p className="text-sm text-red-600">{error}</p>
+        </Card>
+      )}
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <div className="flex items-center justify-between">
             <div>
@@ -179,70 +174,22 @@ export default function FinanceiroPage() {
         <Card>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-[var(--muted-foreground)]">Pendente/Atraso</p>
+              <p className="text-sm text-[var(--muted-foreground)]">Pendente</p>
               <p className="text-xl font-bold mt-1 text-red-600">{formatCurrency(totalPendente)}</p>
             </div>
             <TrendingDown size={24} className="text-red-500" />
           </div>
         </Card>
-      </div>
-
-      {/* Add payment form */}
-      {showForm && (
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Registrar Pagamento</h3>
-          <form onSubmit={handleAddPagamento} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <select
-              value={formBeneficiario}
-              onChange={(e) => {
-                setFormBeneficiario(e.target.value);
-                const ben = beneficiarios.find((b) => b.id === e.target.value);
-                if (ben?.planos) setFormValor(ben.planos.valor_mensal.toFixed(2));
-              }}
-              required
-              className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-            >
-              <option value="">Beneficiário...</option>
-              {beneficiarios.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.nome} - {formatCPF(b.cpf)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              step="0.01"
-              value={formValor}
-              onChange={(e) => setFormValor(e.target.value)}
-              required
-              placeholder="Valor"
-              className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-            />
-            <select
-              value={formStatus}
-              onChange={(e) => setFormStatus(e.target.value as "pago" | "pendente" | "em_atraso")}
-              className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-            >
-              <option value="pago">Pago</option>
-              <option value="pendente">Pendente</option>
-              <option value="em_atraso">Em atraso</option>
-            </select>
-            <input
-              type="date"
-              value={formData}
-              onChange={(e) => setFormData(e.target.value)}
-              className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-            />
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 text-sm bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? "Salvando..." : "Salvar"}
-            </button>
-          </form>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-[var(--muted-foreground)]">Em Atraso</p>
+              <p className="text-xl font-bold mt-1 text-red-600">{formatCurrency(totalAtraso)}</p>
+            </div>
+            <TrendingDown size={24} className="text-red-500" />
+          </div>
         </Card>
-      )}
+      </div>
 
       {/* Payments Table */}
       <Card className="p-0 overflow-hidden">
@@ -262,7 +209,7 @@ export default function FinanceiroPage() {
                   <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Valor</th>
                   <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Data Pgto</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--muted-foreground)]">Ações</th>
+                  <th className="text-right px-4 py-3 font-medium text-[var(--muted-foreground)]">Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,14 +221,24 @@ export default function FinanceiroPage() {
                     <td className="px-4 py-3"><Badge status={p.status} /></td>
                     <td className="px-4 py-3">{p.data_pagamento ? formatDate(p.data_pagamento) : "-"}</td>
                     <td className="px-4 py-3 text-right">
-                      {p.status !== "pago" && (
-                        <button
-                          onClick={() => updateStatus(p.id, "pago")}
-                          className="px-2.5 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded hover:opacity-80 transition-opacity"
-                        >
-                          Marcar pago
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {p.status !== "pago" && (
+                          <button
+                            onClick={() => updateStatus(p.id, "pago")}
+                            className="px-2.5 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded hover:opacity-80 transition-opacity"
+                          >
+                            Marcar Pago
+                          </button>
+                        )}
+                        {p.status === "pendente" && (
+                          <button
+                            onClick={() => updateStatus(p.id, "em_atraso")}
+                            className="px-2.5 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded hover:opacity-80 transition-opacity"
+                          >
+                            Marcar Em Atraso
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

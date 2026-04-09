@@ -1,103 +1,66 @@
-# Gestao de Cartao Voce Saude
+# Cartao Voce Saude
 
-Sistema web para gestao de cartao de descontos com:
-- Dashboard com indicadores atualizados
-- Cadastro e acompanhamento de beneficiarios
-- Controle de renovacoes mensais
-- Modulo financeiro com pagamentos e inadimplencia
+Sistema de gestao para cartao de descontos com:
+- Dashboard de indicadores
+- Gestao de beneficiarios
+- Controle de renovacoes
+- Modulo financeiro
 
 ## Stack
 
-- Frontend: Next.js 16 + TypeScript + Tailwind CSS 4
-- Backend/DB/Auth: Supabase
-- Deploy: Vercel
+- Next.js (App Router) + TypeScript
+- Tailwind CSS v4
+- Supabase JS v2 (`@supabase/supabase-js`)
+- Recharts + Lucide
 
-## Requisitos
+## Configuracao
 
-- Node.js 20+
-- Conta no Supabase
-- (Opcional, recomendado) acesso a connection string Postgres do Supabase para automacao de schema/seed
+1. Instale dependencias:
 
-## Variaveis de ambiente
+```bash
+npm install
+```
 
-Copie `.env.example` para `.env.local` e preencha:
+2. Crie `.env.local`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Obrigatorias (aplicacao):
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Preencha:
 
-Opcionais (automacao de banco):
-- `SUPABASE_DB_URL` (ou `DATABASE_URL`)
-- `SUPABASE_DB_SSL` (`true` por padrao)
+```env
+NEXT_PUBLIC_SUPABASE_URL=sua_url_aqui
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key_aqui
+```
 
-## Inicializacao do banco
+## Banco de dados
 
-### Opcao A (automatica, recomendada)
+As tabelas e seeds estao em:
+- `supabase/schema.sql`
+- `supabase/seed.sql`
 
-Com `SUPABASE_DB_URL` preenchido:
+Se quiser aplicar automaticamente com conexao Postgres:
 
 ```bash
 npm run db:init
 ```
 
-Esse comando aplica:
-1. `supabase/schema.sql`
-2. `supabase/seed.sql`
+Para isso, configure tambem:
+- `SUPABASE_DB_URL` (ou `DATABASE_URL`)
+- `SUPABASE_DB_SSL` (opcional, default true)
 
-de forma idempotente (sem duplicar pagamentos/renovacoes ao repetir).
-
-### Opcao B (manual no SQL Editor)
-
-1. Execute `supabase/schema.sql`
-2. Execute `supabase/seed.sql`
-
-## Rodando local
+## Rodando
 
 ```bash
-npm install
 npm run dev
 ```
 
-Abra `http://localhost:3000`.
+Acesse `http://localhost:3000`.
 
-## Scripts uteis
+## Scripts
 
-- `npm run dev` - desenvolvimento
-- `npm run build` - build de producao
+- `npm run dev` - ambiente de desenvolvimento
 - `npm run typecheck` - validacao TypeScript
-- `npm run db:init` - aplica schema + seed no Postgres
-
-## Usuarios de teste
-
-No Supabase, em **Authentication > Users**, crie:
-- `admin@teste.com`
-- `operador@teste.com`
-
-O trigger de `schema.sql` cria o profile automaticamente.
-Para promover admin:
-
-```sql
-UPDATE profiles
-SET perfil = 'admin', nome = 'Administrador'
-WHERE user_id = '<ID_DO_USUARIO>';
-```
-
-## Execucao automatica no Claude (prompt pronto)
-
-Se quiser pedir para outro agente executar tudo sem pausas, use este prompt:
-
-```text
-Voce esta no repositorio do projeto Cartao Voce Saude.
-Execute do inicio ao fim sem interromper:
-1) npm install
-2) validar .env.local e avisar variaveis faltantes
-3) se existir SUPABASE_DB_URL, rodar npm run db:init
-4) rodar npm run typecheck
-5) rodar npm run build
-6) se tudo estiver ok, rodar npm run dev
-Se houver erro, corrija o codigo e continue ate concluir com sucesso.
-```
+- `npm run build` - build de producao
+- `npm run db:init` - aplica schema e seed

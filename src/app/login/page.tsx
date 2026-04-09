@@ -1,29 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
-import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const missingSupabaseVars = getMissingSupabaseEnvVars();
-  const supabaseConfigured = isSupabaseConfigured();
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-
-    const supabase = createClient();
-    if (!supabase) {
-      setError("Supabase não configurado. Revise as variáveis de ambiente.");
-      setLoading(false);
-      return;
-    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -51,12 +39,6 @@ export default function LoginPage() {
               Acesse sua conta
             </p>
           </div>
-
-          {!supabaseConfigured && (
-            <div className="mb-4">
-              <SupabaseConfigNotice missingVars={missingSupabaseVars} />
-            </div>
-          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>

@@ -1,31 +1,23 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
-import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
 
 interface AuthState {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
-  supabaseConfigured: boolean;
-  missingSupabaseVars: string[];
   signOut: () => Promise<void>;
 }
-
-const missingSupabaseVars = getMissingSupabaseEnvVars();
-const supabaseConfigured = isSupabaseConfigured();
 
 const AuthContext = createContext<AuthState>({
   user: null,
   profile: null,
   loading: true,
   isAdmin: false,
-  supabaseConfigured,
-  missingSupabaseVars,
   signOut: async () => {},
 });
 
@@ -37,16 +29,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [supabaseReady, setSupabaseReady] = useState(false);
 
   useEffect(() => {
-    const client = createClient();
-    if (!client) {
-      setLoading(false);
-      return;
-    }
-    const supabase = client;
+    setSupabaseReady(true);
 
-    let cancelled = false;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        await fetchProfile(currentUser.id);
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    });
 
     async function fetchProfile(userId: string) {
       const { data } = await supabase
@@ -54,70 +54,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select("*")
         .eq("user_id", userId)
         .single();
-
-      if (!cancelled) {
-        setProfile(data as unknown as Profile | null);
-      }
+      setProfile(data as Profile | null);
     }
 
-    async function loadInitialSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (cancelled) {
-        return;
-      }
-
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await fetchProfile(currentUser.id);
-      } else {
-        setProfile(null);
-      }
-
-      if (!cancelled) {
-        setLoading(false);
-      }
-    }
-
-    void loadInitialSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user ?? null;
-      if (cancelled) {
-        return;
-      }
-
-      setUser(currentUser);
-
-      if (currentUser) {
-        await fetchProfile(currentUser.id);
-      } else {
-        setProfile(null);
-      }
-
-      if (!cancelled) {
-        setLoading(false);
-      }
-    });
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
 
     return () => {
-      cancelled = true;
+      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
-    const supabase = createClient();
-    if (supabase) {
-      await supabase.auth.signOut();
+    if (!supabase) {
+      return;
     }
-
+    await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     window.location.href = "/login";
@@ -128,10 +82,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         profile,
-        loading,
+        loading: supabaseReady ? loading : false,
         isAdmin: profile?.perfil === "admin",
-        supabaseConfigured,
-        missingSupabaseVars,
         signOut,
       }}
     >

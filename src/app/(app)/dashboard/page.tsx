@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { formatCPF, formatCurrency, formatDate } from "@/lib/utils";
+import { formatCPF, formatCurrency, formatDate, getMesAtual } from "@/lib/utils";
 import { Users, RefreshCw, DollarSign, AlertTriangle } from "lucide-react";
 import {
   BarChart,
@@ -17,9 +17,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import type { Beneficiario } from "@/lib/types";
-import SupabaseConfigNotice from "@/components/SupabaseConfigNotice";
-import { getMissingSupabaseEnvVars, isSupabaseConfigured } from "@/lib/env";
+import type { Beneficiario, StatusPagamento } from "@/lib/types";
 
 interface DashboardData {
   totalAtivos: number;
@@ -62,28 +60,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabaseConfigured = isSupabaseConfigured();
-  const missingSupabaseVars = getMissingSupabaseEnvVars();
-
   useEffect(() => {
-    if (!supabaseConfigured) {
-      setLoading(false);
-      return;
-    }
-
     void loadDashboard();
-  }, [supabaseConfigured]);
+  }, []);
 
   async function loadDashboard() {
     try {
-      const supabase = createClient();
-      if (!supabase) {
-        setError("Supabase não configurado.");
-        return;
-      }
-
       const now = new Date();
-      const mesAtual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const mesAtual = getMesAtual();
       const months = buildMonthWindow(now);
 
       const [
@@ -99,7 +83,7 @@ export default function DashboardPage() {
         supabase
           .from("pagamentos")
           .select("*", { count: "exact", head: true })
-          .in("status", ["pendente", "em_atraso"]),
+          .eq("status", "em_atraso"),
         supabase
           .from("beneficiarios")
           .select("*, planos(*)")
@@ -159,10 +143,6 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  if (!supabaseConfigured) {
-    return <SupabaseConfigNotice missingVars={missingSupabaseVars} />;
   }
 
   if (loading) {

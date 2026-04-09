@@ -1,71 +1,74 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback } from "react";
-import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { X, CheckCircle, AlertCircle } from "lucide-react";
 import { classNames } from "@/lib/utils";
-
-type ToastType = "success" | "error" | "info";
 
 interface ToastItem {
   id: number;
   message: string;
-  type: ToastType;
+  type: "success" | "error";
 }
 
-const ToastContext = createContext<{
-  toast: (message: string, type?: ToastType) => void;
-}>({ toast: () => {} });
+interface ToastApi {
+  success: (message: string) => void;
+  error: (message: string) => void;
+}
+
+const ToastContext = createContext<{ toast: ToastApi }>({
+  toast: {
+    success: () => {},
+    error: () => {},
+  },
+});
+
+let toastId = 0;
 
 export function useToast() {
   return useContext(ToastContext);
 }
 
-let toastId = 0;
-
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const toast = useCallback((message: string, type: ToastType = "success") => {
+  const pushToast = useCallback((message: string, type: ToastItem["type"]) => {
     const id = ++toastId;
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, 3000);
   }, []);
+
+  const toast: ToastApi = {
+    success: (message: string) => pushToast(message, "success"),
+    error: (message: string) => pushToast(message, "error"),
+  };
 
   const remove = (id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const icons = { success: CheckCircle, error: AlertCircle, info: Info };
-  const colors = {
-    success: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-300",
-    error: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-300",
-    info: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300",
-  };
-
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-        {toasts.map((t) => {
-          const Icon = icons[t.type];
-          return (
-            <div
-              key={t.id}
-              className={classNames(
-                "flex items-center gap-2 px-4 py-3 rounded-lg border shadow-lg animate-[slideIn_0.3s_ease-out]",
-                colors[t.type]
-              )}
-            >
-              <Icon size={18} />
-              <span className="text-sm font-medium">{t.message}</span>
-              <button onClick={() => remove(t.id)} className="ml-2 opacity-60 hover:opacity-100">
-                <X size={14} />
-              </button>
-            </div>
-          );
-        })}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={classNames(
+              "flex items-center gap-2 rounded-lg border px-4 py-3 shadow-lg",
+              t.type === "success"
+                ? "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300"
+                : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300"
+            )}
+          >
+            {t.type === "success" ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+            <span className="text-sm font-medium">{t.message}</span>
+            <button onClick={() => remove(t.id)} className="ml-2 opacity-70 hover:opacity-100">
+              <X size={14} />
+            </button>
+          </div>
+        ))}
       </div>
     </ToastContext.Provider>
   );
