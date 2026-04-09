@@ -39,18 +39,23 @@ export default function DashboardPage() {
   const [ultimos, setUltimos] = useState<BeneficiarioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [debug, setDebug] = useState("init");
 
   useEffect(() => {
+    setDebug("useEffect fired");
     loadData();
   }, []);
 
   async function loadData() {
+    setDebug("loadData started");
     try {
+      setDebug("querying beneficiarios...");
       // --- Cards ---
-      const { count: ativos } = await supabase
+      const { count: ativos, error: e1 } = await supabase
         .from("beneficiarios")
         .select("*", { count: "exact", head: true })
         .eq("status", "ativo");
+      setDebug(`query done: ativos=${ativos}, error=${e1?.message || 'none'}`);
       setTotalAtivos(ativos || 0);
 
       const { count: pendentes } = await supabase
@@ -131,8 +136,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]" />
+        <p className="text-xs text-gray-400 font-mono">DEBUG: {debug}</p>
+        <p className="text-xs text-gray-400 font-mono">URL: {process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 30) || "MISSING"}</p>
       </div>
     );
   }
