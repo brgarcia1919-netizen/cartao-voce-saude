@@ -1,211 +1,206 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
-import { useAuth } from "@/lib/auth-context";
-import { formatCPF, formatPhone, formatDate, formatCurrency } from "@/lib/utils";
-import { Plus, Search, Download, Edit2, Eye, X } from "lucide-react";
-import type { Beneficiario, Plano, StatusBeneficiario } from "@/lib/types";
-import BeneficiarioForm from "./BeneficiarioForm";
-import BeneficiarioDetail from "./BeneficiarioDetail";
+import { exportCSV, formatCPF, formatDate, formatPhone } from "@/lib/utils";
+import { Download, Eye, Plus, Search } from "lucide-react";
+import type { Beneficiario } from "@/lib/types";
 
 export default function BeneficiariosPage() {
   const [beneficiarios, setBeneficiarios] = useState<Beneficiario[]>([]);
-  const [planos, setPlanos] = useState<Plano[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [viewingId, setViewingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("");
-  const [filterMes, setFilterMes] = useState<string>("");
+  const [status, setStatus] = useState("");
+  const [mesVencimento, setMesVencimento] = useState("");
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
-  const supabase = createClient();
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    let query = supabase
-      .from("beneficiarios")
-      .select("*, planos(*)")
-      .order("created_at", { ascending: false });
-
-    if (filterStatus) query = query.eq("status", filterStatus);
-    if (filterMes) {
-      const [year, month] = filterMes.split("-");
-      const start = `${year}-${month}-01`;
-      const end = `${year}-${month}-31`;
-      query = query.gte("data_vencimento", start).lte("data_vencimento", end);
-    }
-
-    const { data } = await query;
-    setBeneficiarios((data || []) as unknown as Beneficiario[]);
-
-    const { data: planosData } = await supabase.from("planos").select("*");
-    setPlanos((planosData || []) as unknown as Plano[]);
-    setLoading(false);
-  }, [filterStatus, filterMes]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    void loadBeneficiarios();
+  }, []);
 
-  const filtered = beneficiarios.filter((b) => {
-    if (!search) return true;
-    const term = search.toLowerCase();
-    return (
-      b.nome.toLowerCase().includes(term) ||
-      b.cpf.includes(term.replace(/\D/g, ""))
-    );
-  });
+  async function loadBeneficiarios() {
+    setLoading(true);
 
-  const exportCSV = () => {
-    const headers = ["Nome", "CPF", "Telefone", "E-mail", "Status", "Plano", "Vencimento"];
-    const rows = filtered.map((b) => [
-      b.nome,
-      formatCPF(b.cpf),
-      formatPhone(b.telefone),
-      b.email,
-      b.status,
-      b.planos?.nome || "",
-      formatDate(b.data_vencimento),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.join(";")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `beneficiarios_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast("CSV exportado com sucesso!");
-  };
+    const { data, error } = await supabase
+      .from("beneficiarios")
+      .select("*, planos(*)")
+      .order("nome", { ascending: true });
 
-  if (viewingId) {
-    return (
-      <BeneficiarioDetail
-        id={viewingId}
-        onClose={() => setViewingId(null)}
-      />
-    );
+    if (error) {
+      toast.error(error.message);
+      setLoading(false);
+      return;
+    }
+
+    setBeneficiarios((data || []) as unknown as Beneficiario[]);
+    setLoading(false);
   }
 
-  if (showForm || editingId) {
-    return (
-      <BeneficiarioForm
-        id={editingId}
-        planos={planos}
-        onClose={() => {
-          setShowForm(false);
-          setEditingId(null);
-        }}
-        onSaved={() => {
-          setShowForm(false);
-          setEditingId(null);
-          loadData();
-          toast(editingId ? "Beneficiário atualizado!" : "Beneficiário cadastrado!");
-        }}
-      />
-    );
+  const filtered = useMemo(() => {
+    return beneficiarios.filter((b) => {
+      const searchOk =
+        !search ||
+        b.nome.toLowerCase().includes(search.toLowerCase()) ||
+        b.cpf.includes(search.replace(/\D/g, ""));
+
+      const statusOk = !status || b.status === status;
+
+      const mesOk =
+        !mesVencimento || b.data_vencimento.slice(5, 7) === mesVencimento;
+
+      return searchOk && statusOk && mesOk;
+    });
+  }, [beneficiarios, search, status, mesVencimento]);
+
+  function handleExportCsv() {
+    const rows = filtered.map((b) => ({
+      nome: b.nome,
+      cpf: formatCPF(b.cpf),
+      telefone: formatPhone(b.telefone),
+      email: b.email,
+      endereco: b.endereco,
+      status: b.status,
+      plano: b.planos?.nome || "-",
+      vencimento: formatDate(b.data_vencimento),
+    }));
+
+    exportCSV(rows, `beneficiarios-${new Date().toISOString().slice(0, 10)}`);
+    toast.success("CSV exportado com sucesso.");
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold">Beneficiários</h2>
         <div className="flex gap-2">
-          <button onClick={exportCSV} className="flex items-center gap-2 px-3 py-2 text-sm border border-[var(--border)] rounded-lg hover:bg-[var(--muted)] transition-colors">
-            <Download size={16} /> CSV
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+          >
+            <Download size={16} />
+            Exportar CSV
           </button>
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 text-sm bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg hover:opacity-90 transition-opacity">
-            <Plus size={16} /> Novo
-          </button>
+          <Link
+            href="/beneficiarios/novo"
+            className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90"
+          >
+            <Plus size={16} />
+            Novo Beneficiário
+          </Link>
         </div>
       </div>
 
-      {/* Filters */}
       <Card>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]" />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="relative md:col-span-2">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+            />
             <input
-              type="text"
-              placeholder="Buscar por nome ou CPF..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+              placeholder="Buscar por nome ou CPF"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
             />
           </div>
+
           <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
           >
             <option value="">Todos os status</option>
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
             <option value="suspenso">Suspenso</option>
           </select>
-          <input
-            type="month"
-            value={filterMes}
-            onChange={(e) => setFilterMes(e.target.value)}
-            className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-            placeholder="Mês vencimento"
-          />
-          {(filterStatus || filterMes) && (
-            <button onClick={() => { setFilterStatus(""); setFilterMes(""); }} className="px-3 py-2 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
-              <X size={16} />
-            </button>
-          )}
+
+          <select
+            value={mesVencimento}
+            onChange={(e) => setMesVencimento(e.target.value)}
+            className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          >
+            <option value="">Todos os meses</option>
+            <option value="01">Jan</option>
+            <option value="02">Fev</option>
+            <option value="03">Mar</option>
+            <option value="04">Abr</option>
+            <option value="05">Mai</option>
+            <option value="06">Jun</option>
+            <option value="07">Jul</option>
+            <option value="08">Ago</option>
+            <option value="09">Set</option>
+            <option value="10">Out</option>
+            <option value="11">Nov</option>
+            <option value="12">Dez</option>
+          </select>
         </div>
       </Card>
 
-      {/* Table */}
       <Card className="p-0 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--primary)]" />
+          <div className="flex h-40 items-center justify-center">
+            <div className="h-7 w-7 animate-spin rounded-full border-b-2 border-[var(--primary)]" />
           </div>
         ) : filtered.length === 0 ? (
-          <p className="text-center py-8 text-[var(--muted-foreground)]">Nenhum beneficiário encontrado.</p>
+          <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">
+            Nenhum registro encontrado.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[var(--muted)] border-b border-[var(--border)]">
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Nome</th>
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">CPF</th>
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)] hidden md:table-cell">Telefone</th>
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Plano</th>
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)]">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted-foreground)] hidden lg:table-cell">Vencimento</th>
-                  <th className="text-right px-4 py-3 font-medium text-[var(--muted-foreground)]">Ações</th>
+                <tr className="border-b border-[var(--border)] bg-[var(--muted)]">
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    Nome
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    CPF
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    Telefone
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    Plano
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--muted-foreground)]">
+                    Vencimento
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-[var(--muted-foreground)]">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((b) => (
-                  <tr key={b.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)] transition-colors">
+                  <tr
+                    key={b.id}
+                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)]"
+                  >
                     <td className="px-4 py-3 font-medium">{b.nome}</td>
                     <td className="px-4 py-3">{formatCPF(b.cpf)}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">{formatPhone(b.telefone)}</td>
+                    <td className="px-4 py-3">{formatPhone(b.telefone)}</td>
                     <td className="px-4 py-3">{b.planos?.nome || "-"}</td>
-                    <td className="px-4 py-3"><Badge status={b.status} /></td>
-                    <td className="px-4 py-3 hidden lg:table-cell">{formatDate(b.data_vencimento)}</td>
+                    <td className="px-4 py-3">
+                      <Badge status={b.status} />
+                    </td>
+                    <td className="px-4 py-3">{formatDate(b.data_vencimento)}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setViewingId(b.id)} className="p-1.5 rounded hover:bg-[var(--accent)] transition-colors" title="Ver detalhes">
-                          <Eye size={15} />
-                        </button>
-                        {isAdmin && (
-                          <button onClick={() => setEditingId(b.id)} className="p-1.5 rounded hover:bg-[var(--accent)] transition-colors" title="Editar">
-                            <Edit2 size={15} />
-                          </button>
-                        )}
-                      </div>
+                      <Link
+                        href={`/beneficiarios/${b.id}`}
+                        className="inline-flex rounded p-1.5 hover:bg-[var(--accent)]"
+                        title="Ver detalhes"
+                      >
+                        <Eye size={16} />
+                      </Link>
                     </td>
                   </tr>
                 ))}

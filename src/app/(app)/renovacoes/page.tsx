@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
@@ -14,44 +14,79 @@ import { differenceInDays, parseISO } from "date-fns";
 export default function RenovacoesPage() {
   const [renovacoes, setRenovacoes] = useState<Renovacao[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<"todos" | "pendente" | "renovado" | "cancelado">("todos");
   const [filterMes, setFilterMes] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-  const supabase = createClient();
 
   const loadData = useCallback(async () => {
     setLoading(true);
-
-    // Buscar beneficiários com vencimento no mês filtrado ou próximo
     const [year, month] = filterMes.split("-").map(Number);
-    const mesAtual = filterMes;
+    const firstDay = `${filterMes}-01`;
+    const lastDay = `${filterMes}-31`;
 
-    // Mês seguinte
-    const nextDate = new Date(year, month, 1);
-    const proxMes = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
-
-    // Range: do 1° dia do mês atual até o último do próximo mês
-    const startDate = `${mesAtual}-01`;
-    const afterProxMes = new Date(year, month + 1, 1);
-    const endDate = `${afterProxMes.getFullYear()}-${String(afterProxMes.getMonth() + 1).padStart(2, "0")}-01`;
-
-    // Buscar renovações existentes
-    const { data } = await supabase
+    let query = supabase
       .from("renovacoes")
       .select("*, beneficiarios(*, planos(*))")
-      .gte("mes_referencia", startDate)
-      .lt("mes_referencia", endDate)
+      .eq("mes_referencia", filterMes)
       .order("mes_referencia", { ascending: true });
 
-    setRenovacoes((data || []) as unknown as Renovacao[]);
+    if (statusFilter !== "todos") {
+      query = query.eq("status", statusFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      toast.error(error.message);
+      setLoading(false);
+      return;
+    }
+
+    let renovacoesMes = (data || []) as unknown as Renovacao[];
+
+    if (renovacoesMes.length === 0) {
+      const { data: beneficiariosAtivos, error: ativosError } = await supabase
+        .from("beneficiarios")
+        .select("*")
+        .eq("status", "ativo")
+        .gte("data_vencimento", firstDay)
+        .lte("data_vencimento", lastDay);
+
+      if (ativosError) {
+        toast.error(ativosError.message);
+        setLoading(false);
+        return;
+      }
+
+      for (const beneficiario of beneficiariosAtivos || []) {
+        await supabase.from("renovacoes").upsert(
+          {
+            beneficiario_id: beneficiario.id,
+            mes_referencia: filterMes,
+            status: "pendente",
+          },
+          { onConflict: "beneficiario_id,mes_referencia" }
+        );
+      }
+
+      const { data: geradas } = await supabase
+        .from("renovacoes")
+        .select("*, beneficiarios(*, planos(*))")
+        .eq("mes_referencia", filterMes)
+        .order("mes_referencia", { ascending: true });
+
+      renovacoesMes = (geradas || []) as unknown as Renovacao[];
+    }
+
+    setRenovacoes(renovacoesMes);
     setLoading(false);
-  }, [filterMes]);
+  }, [filterMes, statusFilter, toast]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const marcarRenovado = async (id: string) => {
@@ -60,29 +95,29 @@ export default function RenovacoesPage() {
       .update({
         status: "renovado",
         data_renovacao: new Date().toISOString().slice(0, 10),
-      } as never)
+      })
       .eq("id", id);
 
     if (error) {
-      toast(error.message, "error");
+      toast.error(error.message);
       return;
     }
-    toast("Renovação concluída!");
-    loadData();
+    toast.success("Renovação concluída!");
+    void loadData();
   };
 
   const marcarCancelado = async (id: string) => {
     const { error } = await supabase
       .from("renovacoes")
-      .update({ status: "cancelado" } as never)
+      .update({ status: "cancelado" })
       .eq("id", id);
 
     if (error) {
-      toast(error.message, "error");
+      toast.error(error.message);
       return;
     }
-    toast("Renovação cancelada.");
-    loadData();
+    toast.success("Renovação cancelada.");
+    void loadData();
   };
 
   const isVencimentoProximo = (r: Renovacao) => {
@@ -98,12 +133,24 @@ export default function RenovacoesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold">Renovações</h2>
-        <input
-          type="month"
-          value={filterMes}
-          onChange={(e) => setFilterMes(e.target.value)}
-          className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
-        />
+        <div className="flex gap-2">
+          <input
+            type="month"
+            value={filterMes}
+            onChange={(e) => setFilterMes(e.target.value)}
+            className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "todos" | "pendente" | "renovado" | "cancelado")}
+            className="px-3 py-2 text-sm border border-[var(--border)] rounded-lg bg-[var(--background)]"
+          >
+            <option value="todos">Todos</option>
+            <option value="pendente">Pendente</option>
+            <option value="renovado">Renovado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
       </div>
 
       {/* Stats */}

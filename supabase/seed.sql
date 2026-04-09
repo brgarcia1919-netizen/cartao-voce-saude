@@ -37,7 +37,10 @@ INSERT INTO renovacoes (beneficiario_id, mes_referencia, status, data_renovacao)
   ('b1b2c3d4-0001-0001-0001-000000000001', '2026-05', 'pendente', NULL),
   ('b1b2c3d4-0001-0001-0001-000000000002', '2026-05', 'pendente', NULL),
   ('b1b2c3d4-0001-0001-0001-000000000003', '2026-05', 'pendente', NULL)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (beneficiario_id, mes_referencia) DO UPDATE
+SET
+  status = EXCLUDED.status,
+  data_renovacao = EXCLUDED.data_renovacao;
 
 -- Pagamentos (últimos 3 meses)
 INSERT INTO pagamentos (beneficiario_id, mes_referencia, valor, status, data_pagamento) VALUES
@@ -66,4 +69,8 @@ INSERT INTO pagamentos (beneficiario_id, mes_referencia, valor, status, data_pag
   ('b1b2c3d4-0001-0001-0001-000000000007', '2026-04', 89.90, 'pago', '2026-04-01'),
   ('b1b2c3d4-0001-0001-0001-000000000008', '2026-04', 49.90, 'em_atraso', NULL),
   ('b1b2c3d4-0001-0001-0001-000000000010', '2026-04', 89.90, 'pendente', NULL)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (beneficiario_id, mes_referencia) DO UPDATE
+SET
+  valor = EXCLUDED.valor,
+  status = EXCLUDED.status,
+  data_pagamento = EXCLUDED.data_pagamento;

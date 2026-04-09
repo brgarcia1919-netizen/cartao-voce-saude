@@ -7,27 +7,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "npx tsx scripts/seed.ts"
+    "typecheck": "tsc --noEmit",
+    "db:init": "tsx scripts/db-init.ts",
+    "seed": "npm run db:init"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.2",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.2.14",
     "autoprefixer": "^10.4.27",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.4.1",
     "lucide-react": "^1.7.0",
-    "next": "^16.2.2",
+    "next": "^15.0.0",
+    "pg": "^8.20.0",
     "postcss": "^8.5.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.8.1",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   }
 }

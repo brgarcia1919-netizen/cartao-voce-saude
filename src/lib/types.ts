@@ -17,13 +17,13 @@ export interface Beneficiario {
   telefone: string;
   email: string;
   endereco: string;
-  data_nascimento: string;
+  data_nascimento: string | null;
   status: StatusBeneficiario;
   data_inicio: string;
   data_vencimento: string;
-  plano_id: string;
+  plano_id: string | null;
   created_at: string;
-  planos?: Plano;
+  planos?: Plano | null;
 }
 
 export interface Plano {
@@ -38,7 +38,7 @@ export interface Renovacao {
   mes_referencia: string;
   status: StatusRenovacao;
   data_renovacao: string | null;
-  beneficiarios?: Beneficiario;
+  beneficiarios?: Beneficiario | null;
 }
 
 export interface Pagamento {
@@ -48,5 +48,5 @@ export interface Pagamento {
   valor: number;
   status: StatusPagamento;
   data_pagamento: string | null;
-  beneficiarios?: Beneficiario;
+  beneficiarios?: Beneficiario | null;
 }

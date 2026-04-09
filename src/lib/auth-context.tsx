@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
 
@@ -29,47 +29,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
+  const [supabaseReady, setSupabaseReady] = useState(false);
 
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
+    setSupabaseReady(true);
 
-    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
 
-    async function fetchProfile(userId: string) {
-      try {
-        const { data } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .single();
-        setProfile(data as unknown as Profile | null);
-      } catch {
+      if (currentUser) {
+        await fetchProfile(currentUser.id);
+      } else {
         setProfile(null);
       }
+      setLoading(false);
+    });
+
+    async function fetchProfile(userId: string) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+      setProfile(data as Profile | null);
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: string, session: { user: User } | null) => {
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-
-        if (currentUser) {
-          await fetchProfile(currentUser.id);
-        } else {
-          setProfile(null);
-        }
-
-        setLoading(false);
-
-        if (event === "SIGNED_OUT") {
-          setProfile(null);
-        }
-      }
-    );
-
-    // Fallback timeout - if onAuthStateChange doesn't fire in 5s, stop loading
     const timeout = setTimeout(() => {
       setLoading(false);
     }, 5000);
@@ -81,7 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    const supabase = createClient();
+    if (!supabase) {
+      return;
+    }
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
@@ -93,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         profile,
-        loading,
+        loading: supabaseReady ? loading : false,
         isAdmin: profile?.perfil === "admin",
         signOut,
       }}
