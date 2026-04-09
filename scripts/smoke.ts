@@ -89,13 +89,35 @@ async function runSmoke() {
     const page = await browser.newPage();
 
     await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
-    await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Senha").fill(password);
 
-    await Promise.all([
-      page.waitForURL(/\/dashboard$/, { timeout: NAV_TIMEOUT_MS }),
-      page.getByRole("button", { name: "Entrar" }).click(),
-    ]);
+    const dashboardHeading = page.getByRole("heading", { name: "Dashboard" });
+    if ((await dashboardHeading.count()) > 0) {
+      await dashboardHeading.first().waitFor({ timeout: NAV_TIMEOUT_MS });
+    } else {
+      const emailInput = page
+        .locator('input[type="email"], input[placeholder*="email" i], input[placeholder*="e-mail" i]')
+        .first();
+      const passwordInput = page.locator('input[type="password"]').first();
+      const submitButton = page
+        .getByRole("button", { name: /entrar/i })
+        .first();
+
+      await emailInput.waitFor({ timeout: NAV_TIMEOUT_MS });
+      await emailInput.fill(email);
+      await passwordInput.fill(password);
+
+      await submitButton.click();
+
+      try {
+        await page.waitForURL(/\/dashboard$/, { timeout: NAV_TIMEOUT_MS });
+      } catch {
+        const errorText = await page.locator("p").allTextContents();
+        const likelyError =
+          errorText.find((text) => /inv[aá]lid|senha|e-mail|email|erro/i.test(text)) ||
+          "Login não avançou para /dashboard.";
+        throw new Error(`Falha no login: ${likelyError}`);
+      }
+    }
 
     await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: NAV_TIMEOUT_MS });
 
